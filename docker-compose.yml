@@ -1,0 +1,18 @@
+services:
+  yomoji:
+    volumes:
+      - ./:/app
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+      target: dev
+    container_name: yomoji
+    user: "1000"
+    ports:
+      - "3001:3000"
+      - "9231:9229"
+    environment:
+      - NODE_ENV=development
+      - DEBUG=engine
+    env_file:
+      - ./.env

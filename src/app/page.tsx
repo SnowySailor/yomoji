@@ -10,9 +10,10 @@ export default function VideoCapture() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
-  const [base64Image, setBase64Image] = useState<string | null>(null);
+  const [base64Images, setBase64Images] = useState<string[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
+  const [isSeekingStaticImageMode, setIsSeekingStaticImageMode] = useState<boolean>(false);
 
   const selectScreen = async () => {
     try {
@@ -91,21 +92,26 @@ export default function VideoCapture() {
     const captureContext = captureCanvas.getContext('2d');
     if (!captureContext) { return; }
 
+    let hackMultiple = 1;
+    if (window.devicePixelRatio >= 2) {
+      hackMultiple = window.devicePixelRatio;
+    }
+
     const width = endPos.x - startPos.x;
     const height = endPos.y - startPos.y;
-    captureCanvas.width = width;
-    captureCanvas.height = height;
+    captureCanvas.width = width * hackMultiple;
+    captureCanvas.height = height * hackMultiple;
 
     captureContext.drawImage(
       videoRef.current,
-      startPos.x,
-      startPos.y,
-      width,
-      height,
+      startPos.x * hackMultiple,
+      startPos.y * hackMultiple,
+      width * hackMultiple,
+      height * hackMultiple,
       0,
       0,
-      width,
-      height
+      width * hackMultiple,
+      height * hackMultiple
     );
 
     const newImageData = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
@@ -115,29 +121,32 @@ export default function VideoCapture() {
     }
 
     const newImageBase64 = await blobToBase64(newImageData as Blob);
-    if (base64Image) {
-      if (await compareImages(newImageBase64, base64Image)) {
-        console.log('No change in image detected');
-        return;
+    if (base64Images.length > 0) {
+      console.log('Comparing new and most recent images...', new Date().toISOString());
+      if (await compareImages([newImageBase64, base64Images[0]])) {
+        console.log('No change in image detected', new Date().toISOString());
       } else {
-        console.log('Detected change in image, reprocessing...');
+        console.log('Detected change in image, reprocessing...', new Date().toISOString());
+        setIsSeekingStaticImageMode(true);
       }
     }
-    setBase64Image(newImageBase64);
-  }, [base64Image, endPos, startPos, videoRef]);
 
-  const endDrawing = useCallback(async () => {
-    setIsDrawing(false);
-    await captureSelection();
-  }, [captureSelection]);
+    console.log('Saving most recent image...', new Date().toISOString());
+    setBase64Images((current) => {
+      if (current && current.length >= 3) {
+        current.pop();
+      }
+      return [newImageBase64, ...(current || [])];
+    });
+  }, [base64Images, endPos, startPos, videoRef]);
 
   const processImage = useCallback(async () => {
-    if (!base64Image) {
+    if (!base64Images) {
       return;
     }
 
     try {
-      const result = await doOcr({ image: base64Image });
+      const result = await doOcr({ image: base64Images[0] });
       if (result) {
         console.log('OCR result:', result);
         const text = result.fullTextAnnotation?.text || '';
@@ -148,7 +157,12 @@ export default function VideoCapture() {
     } catch (error) {
       console.error('Error processing image:', error);
     }
-  }, [base64Image]);
+  }, [base64Images]);
+
+  const endDrawing = useCallback(async () => {
+    setIsDrawing(false);
+    await captureSelection();
+  }, [captureSelection]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -163,9 +177,17 @@ export default function VideoCapture() {
   }, [stream]);
 
   useEffect(() => {
-    processImage();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base64Image]);
+    const handle = async () => {
+      if (isSeekingStaticImageMode) {
+        console.log('Comparing in seeking static image mode...', new Date().toISOString());
+        if (await compareImages(base64Images)) {
+          setIsSeekingStaticImageMode(false);
+          await processImage();
+        }
+      }
+    }
+    handle().catch(console.error);
+  }, [base64Images, isSeekingStaticImageMode, processImage]);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;

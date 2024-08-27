@@ -1,34 +1,33 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
-import { doOcr } from './functions';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { doOcr, compareImages } from './functions';
 
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const debugCanvasRef = useRef<HTMLCanvasElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
-  const [imageData, setImageData] = useState<Blob | null>(null);
+  const [base64Image, setBase64Image] = useState<string | null>(null);
   const [selectedScreen, setSelectedScreen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
 
   const selectScreen = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia();
       setStream(stream);
       setSelectedScreen(true);
+      setIsCaptureLoopEnabled(true);
     } catch (error) {
       console.error('Error accessing screen: ', error);
     }
   }
 
   useEffect(() => {
-    if (!selectedScreen) {
-      return;
-    }
+    if (!selectedScreen) { return; }
 
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
@@ -39,12 +38,12 @@ export default function VideoCapture() {
         }
       };
     }
-  }, [selectedScreen]);
+  }, [selectedScreen, stream]);
 
   useEffect(() => {
     processImage();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageData]);
+  }, [base64Image]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { offsetX, offsetY } = getAdjustedCoordinates(e);
@@ -53,7 +52,7 @@ export default function VideoCapture() {
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (!isDrawing) { return; }
 
     const { offsetX, offsetY } = getAdjustedCoordinates(e);
     setEndPos({ x: offsetX, y: offsetY });
@@ -67,17 +66,12 @@ export default function VideoCapture() {
     }
   };
 
-  const endDrawing = async () => {
-    setIsDrawing(false);
-    await captureSelection();
-  };
-
-  const captureSelection = async () => {
-    if (!canvasRef.current || !videoRef.current) return;
+  const captureSelection = useCallback(async () => {
+    if (!canvasRef.current || !videoRef.current || !selectedScreen) { return; }
 
     const captureCanvas = document.createElement('canvas');
     const captureContext = captureCanvas.getContext('2d');
-    if (!captureContext) return;
+    if (!captureContext) { return; }
 
     const width = endPos.x - startPos.x;
     const height = endPos.y - startPos.y;
@@ -96,27 +90,50 @@ export default function VideoCapture() {
       height
     );
 
-    if (debugCanvasRef.current) {
-      debugCanvasRef.current.width = width;
-      debugCanvasRef.current.height = height;
-      const debugContext = debugCanvasRef.current.getContext('2d');
-      if (debugContext) {
-        debugContext.drawImage(captureCanvas, 0, 0);
-      }
+    const newImageData = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
+    if (!newImageData) {
+      console.error('Failed to capture image data');
+      return;
     }
 
-    const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
-    setImageData(blob as Blob);
-  };
+    const newImageBase64 = await blobToBase64(newImageData as Blob);
+    if (base64Image) {
+      if (await compareImages(newImageBase64, base64Image)) {
+        return;
+      } else {
+        console.log('Detected change in image, reprocessing...');
+      }
+    }
+    setBase64Image(newImageBase64);
+  }, [base64Image, endPos, selectedScreen, startPos, videoRef]);
 
-  const processImage = async () => {
-    if (!imageData) {
-      console.log('No image data to process');
+  const endDrawing = useCallback(async () => {
+    setIsDrawing(false);
+    await captureSelection();
+  }, [captureSelection]);
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (isCaptureLoopEnabled) {
+      intervalId = setInterval(async () => {
+        await captureSelection();
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isCaptureLoopEnabled, captureSelection]);
+
+  const processImage = useCallback(async () => {
+    if (!base64Image) {
       return;
     }
 
     try {
-      const base64Image = await blobToBase64(imageData);
       const result = await doOcr({ image: base64Image });
       if (result) {
         console.log('OCR result:', result);
@@ -128,7 +145,7 @@ export default function VideoCapture() {
     } catch (error) {
       console.error('Error processing image:', error);
     }
-  };
+  }, [base64Image]);
 
   function blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, _) => {
@@ -142,7 +159,12 @@ export default function VideoCapture() {
   }
 
   const getAdjustedCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current || !videoRef.current) return { offsetX: e.nativeEvent.offsetX, offsetY: e.nativeEvent.offsetY };
+    if (!canvasRef.current || !videoRef.current) {
+      return {
+        offsetX: e.nativeEvent.offsetX,
+        offsetY: e.nativeEvent.offsetY
+      };
+    }
 
     const canvasRect = canvasRef.current.getBoundingClientRect();
     const videoWidth = videoRef.current.videoWidth;
@@ -164,21 +186,23 @@ export default function VideoCapture() {
         <video ref={videoRef} autoPlay className="w-full h-auto opacity-0" />
       </>
     ) : (
-    <div>
-      <div className="relative w-full h-auto">
-        <video ref={videoRef} autoPlay className="w-full h-auto" />
-        <canvas
-          ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={endDrawing}
-          className="absolute top-0 left-0 w-full h-full cursor-crosshair"
-        />
-      </div>
-      <br/>
-      <textarea ref={textAreaRef} className="w-full h-32 mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
-      <canvas ref={debugCanvasRef} className="w-full h-auto" />
-    </div>
+      <>
+        <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
+        <div>
+          <div className="relative w-full h-auto">
+            <video ref={videoRef} autoPlay className="w-full h-auto" />
+            <canvas
+              ref={canvasRef}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={endDrawing}
+              className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+            />
+          </div>
+          <br/>
+          <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
+        </div>
+      </>
     )}
   </>
 };

@@ -11,6 +11,7 @@
   "dependencies": {
     "@google-cloud/vision": "^4.3.2",
     "axios": "^1.7.5",
+    "looks-same": "^9.0.1",
     "next": "14.2.6",
     "react": "^18",
     "react-dom": "^18"

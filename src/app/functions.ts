@@ -3,6 +3,7 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { Buffer } from 'buffer';
 import { writeFileSync } from 'fs';
+import looksSame from 'looks-same';
 
 const client = new ImageAnnotatorClient({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
@@ -28,4 +29,12 @@ export const doOcr = async (data: OcrData) => {
     console.error('Error during OCR:', error);
     return false;
   }
+}
+
+export const compareImages = async (image1: string, image2: string) => {
+  const image1Buffer = Buffer.from(image1, 'base64');
+  const image2Buffer = Buffer.from(image2, 'base64');
+  const result = await looksSame(image1Buffer, image2Buffer, { tolerance: 2.3 });
+  console.log(result);
+  return result.equal;
 }

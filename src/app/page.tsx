@@ -2,10 +2,20 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { doOcr, compareImages } from './functions';
+import { preprocessImage } from '@/lib/image';
+
+export interface PreprocessorSettings {
+  isBinarize: boolean;
+  binarize: number;
+  blurRadius: number;
+  invert: boolean;
+  dilate: boolean;
+}
 
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sampleRef = useRef<HTMLCanvasElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -14,6 +24,13 @@ export default function VideoCapture() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
   const [isSeekingStaticImageMode, setIsSeekingStaticImageMode] = useState<boolean>(false);
+  const [preprocessorSettings, setPreprocessorSettings] = useState<PreprocessorSettings>({
+    isBinarize: false,
+    binarize: 50,
+    blurRadius: 0,
+    invert: false,
+    dilate: false,
+  });
 
   const selectScreen = async () => {
     try {
@@ -114,10 +131,22 @@ export default function VideoCapture() {
       height * hackMultiple
     );
 
+    if (captureCanvas.width === 0 || captureCanvas.height === 0) {
+      console.log('No image data captured');
+      return;
+    }
+
+    captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
     const newImageData = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
     if (!newImageData) {
       console.error('Failed to capture image data');
       return;
+    }
+
+    if (sampleRef.current) {
+      sampleRef.current.width = captureCanvas.width;
+      sampleRef.current.height = captureCanvas.height;
+      sampleRef.current.getContext('2d')?.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
     }
 
     const newImageBase64 = await blobToBase64(newImageData as Blob);
@@ -138,7 +167,11 @@ export default function VideoCapture() {
       }
       return [newImageBase64, ...(current || [])];
     });
-  }, [base64Images, endPos, startPos, videoRef]);
+  }, [
+    base64Images, endPos, startPos, videoRef, preprocessorSettings.binarize,
+    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
+    preprocessorSettings.isBinarize
+  ]);
 
   const processImage = useCallback(async () => {
     if (!base64Images) {
@@ -213,6 +246,27 @@ export default function VideoCapture() {
       </>
     ) : (
       <>
+        <div>
+          Is Binarize <input type={'checkbox'} checked={preprocessorSettings.isBinarize} onChange={(e) => {
+            setPreprocessorSettings({ ...preprocessorSettings, isBinarize: e.target.checked });
+          }}/>
+          Binarize <input type={'range'} min={0} max={100} value={preprocessorSettings.binarize} onChange={(e) => {
+            setPreprocessorSettings({ ...preprocessorSettings, binarize: e.target.valueAsNumber });
+          }}/>
+          Blur radius <input type={'range'} min={0} max={100} value={preprocessorSettings.blurRadius} onChange={(e) => {
+            setPreprocessorSettings({ ...preprocessorSettings, blurRadius: e.target.valueAsNumber });
+          }}/>
+          Dilate <input type={'checkbox'} checked={preprocessorSettings.dilate} onChange={(e) => {
+            setPreprocessorSettings({ ...preprocessorSettings, dilate: e.target.checked });
+          }}/>
+          Invert <input type={'checkbox'} checked={preprocessorSettings.invert} onChange={(e) => {
+            setPreprocessorSettings({ ...preprocessorSettings, invert: e.target.checked });
+          }}/>
+          <canvas
+              ref={sampleRef}
+              className="top-0 left-0"
+            />
+        </div>
         <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
         <div>
           <div className="relative w-full h-auto">

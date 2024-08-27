@@ -35,6 +35,5 @@ export const compareImages = async (image1: string, image2: string) => {
   const image1Buffer = Buffer.from(image1, 'base64');
   const image2Buffer = Buffer.from(image2, 'base64');
   const result = await looksSame(image1Buffer, image2Buffer, { tolerance: 2.3 });
-  console.log(result);
   return result.equal;
 }

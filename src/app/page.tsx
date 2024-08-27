@@ -11,7 +11,6 @@ export default function VideoCapture() {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
   const [base64Image, setBase64Image] = useState<string | null>(null);
-  const [selectedScreen, setSelectedScreen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
 
@@ -19,31 +18,11 @@ export default function VideoCapture() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia();
       setStream(stream);
-      setSelectedScreen(true);
       setIsCaptureLoopEnabled(true);
     } catch (error) {
       console.error('Error accessing screen: ', error);
     }
   }
-
-  useEffect(() => {
-    if (!selectedScreen) { return; }
-
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.onloadedmetadata = () => {
-        if (canvasRef.current && videoRef.current) {
-          canvasRef.current.width = videoRef.current.videoWidth;
-          canvasRef.current.height = videoRef.current.videoHeight;
-        }
-      };
-    }
-  }, [selectedScreen, stream]);
-
-  useEffect(() => {
-    processImage();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base64Image]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { offsetX, offsetY } = getAdjustedCoordinates(e);
@@ -66,8 +45,47 @@ export default function VideoCapture() {
     }
   };
 
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, _) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]);
+      }
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const getAdjustedCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current || !videoRef.current) {
+      return {
+        offsetX: e.nativeEvent.offsetX,
+        offsetY: e.nativeEvent.offsetY
+      };
+    }
+
+    let hackMultiple = 1;
+    if (window.devicePixelRatio >= 2) {
+      hackMultiple = window.devicePixelRatio;
+    }
+
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const videoWidth = videoRef.current.videoWidth;
+    const videoHeight = videoRef.current.videoHeight;
+    const realCanvasWidth = canvasRect.width * hackMultiple;
+    const realCanvasHeight = canvasRect.height * hackMultiple;
+
+    const scaleX = videoWidth / realCanvasWidth;
+    const scaleY = videoHeight / realCanvasHeight;
+
+    return {
+      offsetX: e.nativeEvent.offsetX * scaleX,
+      offsetY: e.nativeEvent.offsetY * scaleY
+    };
+  };
+
   const captureSelection = useCallback(async () => {
-    if (!canvasRef.current || !videoRef.current || !selectedScreen) { return; }
+    if (!canvasRef.current || !videoRef.current) { return; }
 
     const captureCanvas = document.createElement('canvas');
     const captureContext = captureCanvas.getContext('2d');
@@ -99,34 +117,19 @@ export default function VideoCapture() {
     const newImageBase64 = await blobToBase64(newImageData as Blob);
     if (base64Image) {
       if (await compareImages(newImageBase64, base64Image)) {
+        console.log('No change in image detected');
         return;
       } else {
         console.log('Detected change in image, reprocessing...');
       }
     }
     setBase64Image(newImageBase64);
-  }, [base64Image, endPos, selectedScreen, startPos, videoRef]);
+  }, [base64Image, endPos, startPos, videoRef]);
 
   const endDrawing = useCallback(async () => {
     setIsDrawing(false);
     await captureSelection();
   }, [captureSelection]);
-
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
-
-    if (isCaptureLoopEnabled) {
-      intervalId = setInterval(async () => {
-        await captureSelection();
-      }, 1000);
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isCaptureLoopEnabled, captureSelection]);
 
   const processImage = useCallback(async () => {
     if (!base64Image) {
@@ -147,40 +150,41 @@ export default function VideoCapture() {
     }
   }, [base64Image]);
 
-  function blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, _) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]);
-      }
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  const getAdjustedCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current || !videoRef.current) {
-      return {
-        offsetX: e.nativeEvent.offsetX,
-        offsetY: e.nativeEvent.offsetY
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.onloadedmetadata = () => {
+        if (canvasRef.current && videoRef.current) {
+          canvasRef.current.width = videoRef.current.videoWidth;
+          canvasRef.current.height = videoRef.current.videoHeight;
+        }
       };
     }
+  }, [stream]);
 
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    const videoWidth = videoRef.current.videoWidth;
-    const videoHeight = videoRef.current.videoHeight;
-    
-    const scaleX = videoWidth / canvasRect.width;
-    const scaleY = videoHeight / canvasRect.height;
+  useEffect(() => {
+    processImage();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base64Image]);
 
-    return {
-      offsetX: e.nativeEvent.offsetX * scaleX,
-      offsetY: e.nativeEvent.offsetY * scaleY
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (isCaptureLoopEnabled) {
+      intervalId = setInterval(async () => {
+        await captureSelection();
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
-  };
+  }, [isCaptureLoopEnabled, captureSelection]);
 
   return <>
-    { !selectedScreen ? (
+    { stream === null ? (
       <>
         <button onClick={selectScreen}>Select screen</button>
         <video ref={videoRef} autoPlay className="w-full h-auto opacity-0" />

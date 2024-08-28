@@ -3,7 +3,9 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { Buffer } from 'buffer';
 import { writeFileSync } from 'fs';
-import looksSame from 'looks-same';
+import pixelmatch from 'pixelmatch';
+import type { CanvasCaptureImage } from './page';
+import { PNG } from 'pngjs';
 
 const client = new ImageAnnotatorClient({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
@@ -32,13 +34,24 @@ export const doOcr = async (data: OcrData) => {
   }
 }
 
-export const compareImages = async (images: string[]) => {
+export const compareImages = async (images: CanvasCaptureImage[]) => {
+  const percentageThreshold = 0.05;
   const equalityChecks = await Promise.all(images.map(async (image, index) => {
     if (index === 0) { return true };
-    const image1Buffer = Buffer.from(images[index - 1], 'base64');
-    const image2Buffer = Buffer.from(image, 'base64');
-    const { equal } = await looksSame(image1Buffer, image2Buffer, { tolerance: 2.3 });
-    return equal;
+    const { imageBase64 } = image;
+    const { imageBase64: imageBase64Prev } = images[index - 1];
+    const image1 = PNG.sync.read(Buffer.from(imageBase64, 'base64'));
+    const image2 = PNG.sync.read(Buffer.from(imageBase64Prev, 'base64'));
+    const { width, height } = image1;
+    const { width: width2, height: height2 } = image2;
+    if (width !== width2 || height !== height2) {
+      return false;
+    }
+    const diff = new PNG({width, height});
+
+    const diffPixels = pixelmatch(image1.data, image2.data, diff.data, width, height, { threshold: 0.1 });
+    writeFileSync(`/app/debug/diff-${Date.now()}-${diffPixels}.png`, PNG.sync.write(diff));
+    return diffPixels / (width * height) < percentageThreshold;
   }));
 
   return equalityChecks.every(equal => equal);

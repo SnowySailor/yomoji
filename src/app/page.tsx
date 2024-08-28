@@ -10,7 +10,18 @@ export interface PreprocessorSettings {
   blurRadius: number;
   invert: boolean;
   dilate: boolean;
-}
+};
+
+export type CanvasCaptureImage = {
+  imageBase64: string;
+  width: number;
+  height: number;
+};
+
+export type CanvasCapture = {
+  canvas: HTMLCanvasElement;
+  capture: CanvasCaptureImage;
+};
 
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -20,7 +31,7 @@ export default function VideoCapture() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
-  const [base64Images, setBase64Images] = useState<string[]>([]);
+  const [images, setImages] = useState<CanvasCaptureImage[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
   const [isSeekingStaticImageMode, setIsSeekingStaticImageMode] = useState<boolean>(false);
@@ -102,7 +113,7 @@ export default function VideoCapture() {
     };
   };
 
-  const captureSelection = useCallback(async () => {
+  const getSelectedImageData = useCallback(async (): Promise<CanvasCapture | undefined> => {
     if (!canvasRef.current || !videoRef.current) { return; }
 
     const captureCanvas = document.createElement('canvas');
@@ -137,22 +148,32 @@ export default function VideoCapture() {
     }
 
     captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
-    const newImageData = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
-    if (!newImageData) {
-      console.error('Failed to capture image data');
+    const imageBlob: Blob | null = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
+    if (!imageBlob) {
       return;
     }
 
-    if (sampleRef.current) {
-      sampleRef.current.width = captureCanvas.width;
-      sampleRef.current.height = captureCanvas.height;
-      sampleRef.current.getContext('2d')?.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
-    }
+    return {
+      capture: {
+        imageBase64: await blobToBase64(imageBlob),
+        width: captureCanvas.width,
+        height: captureCanvas.height,
+      },
+      canvas: captureCanvas,
+    } as CanvasCapture;
+  }, [endPos.x, endPos.y, startPos.x, startPos.y, preprocessorSettings.binarize,
+    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
+    preprocessorSettings.isBinarize, videoRef?.current?.srcObject
+  ]);
 
-    const newImageBase64 = await blobToBase64(newImageData as Blob);
-    if (base64Images.length > 0) {
+  const captureSelection = useCallback(async () => {
+    const imageData = await getSelectedImageData();
+    if (!imageData) { return; }
+    const { capture  } = imageData;
+
+    if (images.length > 0) {
       console.log('Comparing new and most recent images...', new Date().toISOString());
-      if (await compareImages([newImageBase64, base64Images[0]])) {
+      if (await compareImages([capture, images[0]])) {
         console.log('No change in image detected', new Date().toISOString());
       } else {
         console.log('Detected change in image, reprocessing...', new Date().toISOString());
@@ -161,25 +182,25 @@ export default function VideoCapture() {
     }
 
     console.log('Saving most recent image...', new Date().toISOString());
-    setBase64Images((current) => {
+    setImages((current) => {
       if (current && current.length >= 3) {
         current.pop();
       }
-      return [newImageBase64, ...(current || [])];
+      return [capture, ...(current || [])];
     });
   }, [
-    base64Images, endPos, startPos, videoRef, preprocessorSettings.binarize,
+    images, endPos, startPos, videoRef, preprocessorSettings.binarize,
     preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
     preprocessorSettings.isBinarize
   ]);
 
   const processImage = useCallback(async () => {
-    if (!base64Images) {
+    if (images.length === 0) {
       return;
     }
 
     try {
-      const result = await doOcr({ image: base64Images[0] });
+      const result = await doOcr({ image: images[0].imageBase64 });
       if (result) {
         console.log('OCR result:', result);
         const text = result.fullTextAnnotation?.text || '';
@@ -190,12 +211,30 @@ export default function VideoCapture() {
     } catch (error) {
       console.error('Error processing image:', error);
     }
-  }, [base64Images]);
+  }, [images]);
 
   const endDrawing = useCallback(async () => {
     setIsDrawing(false);
     await captureSelection();
   }, [captureSelection]);
+
+  useEffect(() => {
+    async function handle() { 
+      const imageData = await getSelectedImageData();
+      if (!imageData) { return; }
+      const { capture: { width, height }, canvas } = imageData;
+
+      if (sampleRef.current) {
+        sampleRef.current.width = width;
+        sampleRef.current.height = height;
+        sampleRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
+      }
+    }
+    handle().catch(console.error);
+  }, [endPos, startPos, videoRef, preprocessorSettings.binarize,
+    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
+    preprocessorSettings.isBinarize
+  ]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -213,14 +252,14 @@ export default function VideoCapture() {
     const handle = async () => {
       if (isSeekingStaticImageMode) {
         console.log('Comparing in seeking static image mode...', new Date().toISOString());
-        if (await compareImages(base64Images)) {
+        if (await compareImages(images)) {
           setIsSeekingStaticImageMode(false);
           await processImage();
         }
       }
     }
     handle().catch(console.error);
-  }, [base64Images, isSeekingStaticImageMode, processImage]);
+  }, [images, isSeekingStaticImageMode, processImage]);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
@@ -239,50 +278,42 @@ export default function VideoCapture() {
   }, [isCaptureLoopEnabled, captureSelection]);
 
   return <>
-    { stream === null ? (
-      <>
-        <button onClick={selectScreen}>Select screen</button>
-        <video ref={videoRef} autoPlay className="w-full h-auto opacity-0" />
-      </>
-    ) : (
-      <>
-        <div>
-          Is Binarize <input type={'checkbox'} checked={preprocessorSettings.isBinarize} onChange={(e) => {
-            setPreprocessorSettings({ ...preprocessorSettings, isBinarize: e.target.checked });
-          }}/>
-          Binarize <input type={'range'} min={0} max={100} value={preprocessorSettings.binarize} onChange={(e) => {
-            setPreprocessorSettings({ ...preprocessorSettings, binarize: e.target.valueAsNumber });
-          }}/>
-          Blur radius <input type={'range'} min={0} max={100} value={preprocessorSettings.blurRadius} onChange={(e) => {
-            setPreprocessorSettings({ ...preprocessorSettings, blurRadius: e.target.valueAsNumber });
-          }}/>
-          Dilate <input type={'checkbox'} checked={preprocessorSettings.dilate} onChange={(e) => {
-            setPreprocessorSettings({ ...preprocessorSettings, dilate: e.target.checked });
-          }}/>
-          Invert <input type={'checkbox'} checked={preprocessorSettings.invert} onChange={(e) => {
-            setPreprocessorSettings({ ...preprocessorSettings, invert: e.target.checked });
-          }}/>
-          <canvas
-              ref={sampleRef}
-              className="top-0 left-0"
-            />
-        </div>
-        <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
-        <div>
-          <div className="relative w-full h-auto">
-            <video ref={videoRef} autoPlay className="w-full h-auto" />
-            <canvas
-              ref={canvasRef}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={endDrawing}
-              className="absolute top-0 left-0 w-full h-full cursor-crosshair"
-            />
-          </div>
-          <br/>
-          <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
-        </div>
-      </>
-    )}
+    <div>
+      <button onClick={selectScreen}>Select screen</button>
+      Is Binarize <input type={'checkbox'} checked={preprocessorSettings.isBinarize} onChange={(e) => {
+        setPreprocessorSettings({ ...preprocessorSettings, isBinarize: e.target.checked });
+      }}/>
+      Binarize <input type={'range'} min={0} max={100} value={preprocessorSettings.binarize} onChange={(e) => {
+        setPreprocessorSettings({ ...preprocessorSettings, binarize: e.target.valueAsNumber });
+      }}/>
+      Blur radius <input type={'range'} min={0} max={100} value={preprocessorSettings.blurRadius} onChange={(e) => {
+        setPreprocessorSettings({ ...preprocessorSettings, blurRadius: e.target.valueAsNumber });
+      }}/>
+      Dilate <input type={'checkbox'} checked={preprocessorSettings.dilate} onChange={(e) => {
+        setPreprocessorSettings({ ...preprocessorSettings, dilate: e.target.checked });
+      }}/>
+      Invert <input type={'checkbox'} checked={preprocessorSettings.invert} onChange={(e) => {
+        setPreprocessorSettings({ ...preprocessorSettings, invert: e.target.checked });
+      }}/>
+      <canvas
+          ref={sampleRef}
+          className="top-0 left-0"
+        />
+    </div>
+    <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
+    <div>
+      <div className="relative w-full h-auto">
+        <video ref={videoRef} autoPlay className="w-full h-auto" />
+        <canvas
+          ref={canvasRef}
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={endDrawing}
+          className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+        />
+      </div>
+      <br/>
+      <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
+    </div>
   </>
 };

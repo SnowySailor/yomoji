@@ -13,11 +13,15 @@
     "axios": "^1.7.5",
     "looks-same": "^9.0.1",
     "next": "14.2.6",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
     "react": "^18",
     "react-dom": "^18"
   },
   "devDependencies": {
     "@types/node": "^20.16.1",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18",
     "eslint": "^8",

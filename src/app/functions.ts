@@ -50,7 +50,6 @@ export const compareImages = async (images: CanvasCaptureImage[]) => {
     const diff = new PNG({width, height});
 
     const diffPixels = pixelmatch(image1.data, image2.data, diff.data, width, height, { threshold: 0.1 });
-    writeFileSync(`/app/debug/diff-${Date.now()}-${diffPixels}.png`, PNG.sync.write(diff));
     return diffPixels / (width * height) < percentageThreshold;
   }));
 

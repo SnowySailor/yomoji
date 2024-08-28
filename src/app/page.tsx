@@ -23,10 +23,107 @@ export type CanvasCapture = {
   capture: CanvasCaptureImage;
 };
 
+function ImagePreprocessor({
+  preprocessorSettings,
+  setPreprocessorSettings,
+  previewRef
+}: {
+  setPreprocessorSettings: (settings: PreprocessorSettings) => void,
+  preprocessorSettings: PreprocessorSettings,
+  previewRef: React.RefObject<HTMLCanvasElement>
+}) {
+  return <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      <label className="flex items-center space-x-2">
+        <span>Is Binarize</span>
+        <input
+          type="checkbox"
+          className="form-checkbox h-5 w-5 text-blue-600"
+          checked={preprocessorSettings.isBinarize}
+          onChange={(e) => {
+            setPreprocessorSettings({
+              ...preprocessorSettings,
+              isBinarize: e.target.checked,
+            });
+          }}
+        />
+      </label>
+      <label className="flex items-center space-x-2">
+        <span>Binarize</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          className="form-range w-full"
+          value={preprocessorSettings.binarize}
+          onChange={(e) => {
+            setPreprocessorSettings({
+              ...preprocessorSettings,
+              binarize: e.target.valueAsNumber,
+            });
+          }}
+        />
+      </label>
+      <label className="flex items-center space-x-2">
+        <span>Blur radius</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          className="form-range w-full"
+          value={preprocessorSettings.blurRadius}
+          onChange={(e) => {
+            setPreprocessorSettings({
+              ...preprocessorSettings,
+              blurRadius: e.target.valueAsNumber,
+            });
+          }}
+        />
+      </label>
+      <label className="flex items-center space-x-2">
+        <span>Dilate</span>
+        <input
+          type="checkbox"
+          className="form-checkbox h-5 w-5 text-blue-600"
+          checked={preprocessorSettings.dilate}
+          onChange={(e) => {
+            setPreprocessorSettings({
+              ...preprocessorSettings,
+              dilate: e.target.checked,
+            });
+          }}
+        />
+      </label>
+      <label className="flex items-center space-x-2">
+        <span>Invert</span>
+        <input
+          type="checkbox"
+          className="form-checkbox h-5 w-5 text-blue-600"
+          checked={preprocessorSettings.invert}
+          onChange={(e) => {
+            setPreprocessorSettings({
+              ...preprocessorSettings,
+              invert: e.target.checked,
+            });
+          }}
+        />
+      </label>
+    </div>
+
+    <div className="flex justify-center">
+      <canvas
+        ref={previewRef}
+        className="border border-gray-300"
+      />
+    </div>
+  </div>
+}
+
+
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sampleRef = useRef<HTMLCanvasElement>(null);
+  const previewRef = useRef<HTMLCanvasElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -224,10 +321,10 @@ export default function VideoCapture() {
       if (!imageData) { return; }
       const { capture: { width, height }, canvas } = imageData;
 
-      if (sampleRef.current) {
-        sampleRef.current.width = width;
-        sampleRef.current.height = height;
-        sampleRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
+      if (previewRef.current) {
+        previewRef.current.width = width;
+        previewRef.current.height = height;
+        previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
       }
     }
     handle().catch(console.error);
@@ -280,27 +377,8 @@ export default function VideoCapture() {
   return <>
     <div>
       <button onClick={selectScreen}>Select screen</button>
-      Is Binarize <input type={'checkbox'} checked={preprocessorSettings.isBinarize} onChange={(e) => {
-        setPreprocessorSettings({ ...preprocessorSettings, isBinarize: e.target.checked });
-      }}/>
-      Binarize <input type={'range'} min={0} max={100} value={preprocessorSettings.binarize} onChange={(e) => {
-        setPreprocessorSettings({ ...preprocessorSettings, binarize: e.target.valueAsNumber });
-      }}/>
-      Blur radius <input type={'range'} min={0} max={100} value={preprocessorSettings.blurRadius} onChange={(e) => {
-        setPreprocessorSettings({ ...preprocessorSettings, blurRadius: e.target.valueAsNumber });
-      }}/>
-      Dilate <input type={'checkbox'} checked={preprocessorSettings.dilate} onChange={(e) => {
-        setPreprocessorSettings({ ...preprocessorSettings, dilate: e.target.checked });
-      }}/>
-      Invert <input type={'checkbox'} checked={preprocessorSettings.invert} onChange={(e) => {
-        setPreprocessorSettings({ ...preprocessorSettings, invert: e.target.checked });
-      }}/>
-      <canvas
-          ref={sampleRef}
-          className="top-0 left-0"
-        />
+      <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
     </div>
-    <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
     <div>
       <div className="relative w-full h-auto">
         <video ref={videoRef} autoPlay className="w-full h-auto" />
@@ -315,5 +393,6 @@ export default function VideoCapture() {
       <br/>
       <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
     </div>
+    <ImagePreprocessor preprocessorSettings={preprocessorSettings} setPreprocessorSettings={setPreprocessorSettings} previewRef={previewRef} />
   </>
 };

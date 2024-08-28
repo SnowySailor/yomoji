@@ -23,6 +23,19 @@ export type CanvasCapture = {
   capture: CanvasCaptureImage;
 };
 
+function DummyYomichanSentenceTerminator() {
+  // This element is a hack to keep Yomitan at bay.
+  // It adds one of the sentence termination characters to the DOM
+  // but keeps it invisible so that it doesn't end up including the stuff
+  // before the beginning or after the end of the page containers.
+  // Chromium is smart enough to know that 'color:transparent' means that the content is not
+  // visible (so it's ignored), so we have to use a color that is almost transparent instead
+  return (
+    // eslint-disable-next-line react/no-unescaped-entities
+    <p className="dummyYomichanSentenceTerminator" style={{ position: 'absolute', color: 'rgba(255,255,255,0.01)', zIndex: '-1' }}>"</p>
+  );
+}
+
 function ImagePreprocessor({
   preprocessorSettings,
   setPreprocessorSettings,
@@ -117,14 +130,53 @@ function ImagePreprocessor({
       />
     </div>
   </div>
+};
+
+function ScreenCaptureButtons({
+  isCaptureLoopEnabled,
+  setIsCaptureLoopEnabled,
+  selectScreen
+}: {
+  isCaptureLoopEnabled: boolean,
+  setIsCaptureLoopEnabled: (enabled: boolean) => void,
+  selectScreen: () => void
+}) {
+  return <div className="flex space-x-4">
+    <button
+      onClick={selectScreen}
+      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      Select screen
+    </button>
+    <button
+      onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}
+      className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+    >
+      {isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop
+    </button>
+  </div>
 }
 
+function ManualControlbuttons({
+  processImage
+}: {
+  processImage: () => void
+}) {
+  return <div className="flex space-x-4">
+    <button
+      onClick={() => { processImage() }}
+      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      Force process image
+    </button>
+  </div>
+}
 
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
-  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const ocrResultRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
@@ -258,10 +310,7 @@ export default function VideoCapture() {
       },
       canvas: captureCanvas,
     } as CanvasCapture;
-  }, [endPos.x, endPos.y, startPos.x, startPos.y, preprocessorSettings.binarize,
-    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
-    preprocessorSettings.isBinarize, videoRef?.current?.srcObject
-  ]);
+  }, [endPos, startPos, preprocessorSettings, videoRef?.current?.srcObject]);
 
   const captureSelection = useCallback(async () => {
     const imageData = await getSelectedImageData();
@@ -269,8 +318,9 @@ export default function VideoCapture() {
     const { capture  } = imageData;
 
     if (images.length > 0) {
-      console.log('Comparing new and most recent images...', new Date().toISOString());
-      if (await compareImages([capture, images[0]])) {
+      const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
+      console.log('Image comparison result:', equal, percentageDifferences);
+      if (equal) {
         console.log('No change in image detected', new Date().toISOString());
       } else {
         console.log('Detected change in image, reprocessing...', new Date().toISOString());
@@ -280,29 +330,29 @@ export default function VideoCapture() {
 
     console.log('Saving most recent image...', new Date().toISOString());
     setImages((current) => {
-      if (current && current.length >= 3) {
+      while (current && current.length > 2) {
         current.pop();
       }
       return [capture, ...(current || [])];
     });
+    return capture;
   }, [
-    images, endPos, startPos, videoRef, preprocessorSettings.binarize,
-    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
-    preprocessorSettings.isBinarize
+    images, getSelectedImageData
   ]);
 
-  const processImage = useCallback(async () => {
-    if (images.length === 0) {
+  const processImage = useCallback(async (capture?: CanvasCaptureImage) => {
+    if (images.length === 0 && !capture) {
       return;
     }
 
     try {
-      const result = await doOcr({ image: images[0].imageBase64 });
+      const imageToProcess = capture || images[0];
+      const result = await doOcr({ image: imageToProcess.imageBase64 });
+      console.log('OCR result:', result);
       if (result) {
-        console.log('OCR result:', result);
         const text = result.fullTextAnnotation?.text || '';
-        if (textAreaRef.current) {
-          textAreaRef.current.value = text;
+        if (ocrResultRef.current) {
+          ocrResultRef.current.innerText = text;
         }
       }
     } catch (error) {
@@ -312,8 +362,9 @@ export default function VideoCapture() {
 
   const endDrawing = useCallback(async () => {
     setIsDrawing(false);
-    await captureSelection();
-  }, [captureSelection]);
+    const capture = await captureSelection();
+    await processImage(capture);
+  }, [captureSelection, processImage]);
 
   useEffect(() => {
     async function handle() { 
@@ -328,10 +379,7 @@ export default function VideoCapture() {
       }
     }
     handle().catch(console.error);
-  }, [endPos, startPos, videoRef, preprocessorSettings.binarize,
-    preprocessorSettings.blurRadius, preprocessorSettings.dilate, preprocessorSettings.invert,
-    preprocessorSettings.isBinarize
-  ]);
+  }, [endPos, startPos, videoRef, preprocessorSettings, getSelectedImageData]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -348,8 +396,9 @@ export default function VideoCapture() {
   useEffect(() => {
     const handle = async () => {
       if (isSeekingStaticImageMode) {
-        console.log('Comparing in seeking static image mode...', new Date().toISOString());
-        if (await compareImages(images)) {
+        const { equal, percentageDifferences } = await compareImages(images);
+        console.log('Image comparison result:', equal, percentageDifferences);
+        if (equal) {
           setIsSeekingStaticImageMode(false);
           await processImage();
         }
@@ -375,10 +424,7 @@ export default function VideoCapture() {
   }, [isCaptureLoopEnabled, captureSelection]);
 
   return <>
-    <div>
-      <button onClick={selectScreen}>Select screen</button>
-      <button onClick={() => setIsCaptureLoopEnabled(!isCaptureLoopEnabled)}>{isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop</button>
-    </div>
+    <ScreenCaptureButtons isCaptureLoopEnabled={isCaptureLoopEnabled} setIsCaptureLoopEnabled={setIsCaptureLoopEnabled} selectScreen={selectScreen} />
     <div>
       <div className="relative w-full h-auto">
         <video ref={videoRef} autoPlay className="w-full h-auto" />
@@ -391,7 +437,16 @@ export default function VideoCapture() {
         />
       </div>
       <br/>
-      <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" />
+      <ManualControlbuttons processImage={processImage} />
+      <DummyYomichanSentenceTerminator />
+      <div
+        ref={ocrResultRef}
+        contentEditable={true}
+        suppressContentEditableWarning={true}
+        className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none"
+      />
+      {/* <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" /> */}
+      <DummyYomichanSentenceTerminator />
     </div>
     <ImagePreprocessor preprocessorSettings={preprocessorSettings} setPreprocessorSettings={setPreprocessorSettings} previewRef={previewRef} />
   </>

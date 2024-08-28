@@ -15,6 +15,11 @@ interface OcrData {
   image: string;
 }
 
+type EqualityResult = {
+  equal: boolean;
+  percentageDifferences: number[];
+}
+
 export const doOcr = async (data: OcrData) => {
   try {
     console.log('Spending money on OCR...');
@@ -34,10 +39,15 @@ export const doOcr = async (data: OcrData) => {
   }
 }
 
-export const compareImages = async (images: CanvasCaptureImage[]) => {
-  const percentageThreshold = 0.05;
+export const compareImages = async (images: CanvasCaptureImage[]): Promise<EqualityResult> => {
+  const percentageThreshold = 0.02;
   const equalityChecks = await Promise.all(images.map(async (image, index) => {
-    if (index === 0) { return true };
+    if (index === 0) {
+      return {
+        equal: true,
+        percentageDifferent: -1,
+      }
+    };
     const { imageBase64 } = image;
     const { imageBase64: imageBase64Prev } = images[index - 1];
     const image1 = PNG.sync.read(Buffer.from(imageBase64, 'base64'));
@@ -45,13 +55,27 @@ export const compareImages = async (images: CanvasCaptureImage[]) => {
     const { width, height } = image1;
     const { width: width2, height: height2 } = image2;
     if (width !== width2 || height !== height2) {
-      return false;
+      return {
+        equal: false,
+        percentageDifferent: -1,
+      };
     }
     const diff = new PNG({width, height});
 
     const diffPixels = pixelmatch(image1.data, image2.data, diff.data, width, height, { threshold: 0.1 });
-    return diffPixels / (width * height) < percentageThreshold;
+    const percentageDifferent = diffPixels / (width * height);
+    const equal = percentageDifferent < percentageThreshold;
+    return {
+      equal,
+      percentageDifferent,
+    };
   }));
 
-  return equalityChecks.every(equal => equal);
+  const percentageDifferences = equalityChecks.map(result => result.percentageDifferent);
+  const allEqual = equalityChecks.every(result => result.equal);
+
+  return {
+    equal: allEqual,
+    percentageDifferences
+  };
 }

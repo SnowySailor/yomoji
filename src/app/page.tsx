@@ -172,6 +172,20 @@ function ManualControlbuttons({
   </div>
 }
 
+function resizeCanvas(canvas: HTMLCanvasElement | null) {
+  if (!canvas) { return false; }
+  const { width, height } = canvas.getBoundingClientRect();
+  if (canvas.width !== width || canvas.height !== height) {
+    const { devicePixelRatio:ratio = 1 } = window;
+    const context = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = height;
+    context?.scale(ratio, ratio);
+    return true;
+  }
+  return false;
+}
+
 export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -197,6 +211,7 @@ export default function VideoCapture() {
       const stream = await navigator.mediaDevices.getDisplayMedia();
       setStream(stream);
       setIsCaptureLoopEnabled(true);
+      resizeCanvas(canvasRef.current);
     } catch (error) {
       console.error('Error accessing screen: ', error);
     }
@@ -242,16 +257,11 @@ export default function VideoCapture() {
       };
     }
 
-    let hackMultiple = 1;
-    if (window.devicePixelRatio >= 2) {
-      hackMultiple = window.devicePixelRatio;
-    }
-
     const canvasRect = canvasRef.current.getBoundingClientRect();
     const videoWidth = videoRef.current.videoWidth;
     const videoHeight = videoRef.current.videoHeight;
-    const realCanvasWidth = canvasRect.width * hackMultiple;
-    const realCanvasHeight = canvasRect.height * hackMultiple;
+    const realCanvasWidth = canvasRect.width;
+    const realCanvasHeight = canvasRect.height;
 
     const scaleX = videoWidth / realCanvasWidth;
     const scaleY = videoHeight / realCanvasHeight;
@@ -270,9 +280,9 @@ export default function VideoCapture() {
     if (!captureContext) { return; }
 
     let hackMultiple = 1;
-    if (window.devicePixelRatio >= 2) {
-      hackMultiple = window.devicePixelRatio;
-    }
+    // if (window.devicePixelRatio >= 2) {
+    //   hackMultiple = window.devicePixelRatio;
+    // }
 
     const width = endPos.x - startPos.x;
     const height = endPos.y - startPos.y;
@@ -443,7 +453,7 @@ export default function VideoCapture() {
         ref={ocrResultRef}
         contentEditable={true}
         suppressContentEditableWarning={true}
-        className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none"
+        className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none overflow-scroll"
       />
       {/* <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" /> */}
       <DummyYomichanSentenceTerminator />

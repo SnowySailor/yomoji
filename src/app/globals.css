@@ -31,3 +31,20 @@ body {
     text-wrap: balance;
   }
 }
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+}
+
+@keyframes flashGreenBorder {
+  0% {
+    border: 3px solid green;
+  }
+  100% {
+    border: 3px solid transparent;
+  }
+}
+
+.flash-border {
+  animation: flashGreenBorder 0.5s ease-in-out forwards;
+}

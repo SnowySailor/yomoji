@@ -11,6 +11,7 @@
   "dependencies": {
     "@google-cloud/vision": "^4.3.2",
     "axios": "^1.7.5",
+    "clsx": "^2.1.1",
     "next": "14.2.6",
     "pixelmatch": "^6.0.0",
     "pngjs": "^7.0.0",

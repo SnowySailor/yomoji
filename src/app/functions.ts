@@ -39,8 +39,7 @@ export const doOcr = async (data: OcrData) => {
   }
 }
 
-export const compareImages = async (images: CanvasCaptureImage[]): Promise<EqualityResult> => {
-  const percentageThreshold = 0.02;
+export const compareImages = async (images: CanvasCaptureImage[], percentageThreshold: number): Promise<EqualityResult> => {
   const equalityChecks = await Promise.all(images.map(async (image, index) => {
     if (index === 0) {
       return {

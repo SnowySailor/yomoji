@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { doOcr, compareImages } from './functions';
 import { preprocessImage } from '@/lib/image';
 import { useInterval } from 'usehooks-ts'
+import clsx from 'clsx';
 
 export interface PreprocessorSettings {
   isBinarize: boolean;
@@ -46,101 +47,103 @@ function ImagePreprocessor({
   setPreprocessorSettings: (settings: PreprocessorSettings) => void,
   previewRef: React.RefObject<HTMLCanvasElement>
 }) {
-  return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      <label className="flex items-center space-x-2">
-        <span>Is Binarize</span>
-        <input
-          type="checkbox"
-          className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettings.isBinarize}
-          onChange={(e) => {
-            setPreprocessorSettings({
-              ...preprocessorSettings,
-              isBinarize: e.target.checked,
-            });
-          }}
-        />
-      </label>
-      <label className="flex items-center space-x-2">
-        <span>Binarize</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          className="form-range w-full"
-          value={preprocessorSettings.binarize}
-          onChange={(e) => {
-            setPreprocessorSettings({
-              ...preprocessorSettings,
-              binarize: e.target.valueAsNumber,
-            });
-          }}
-        />
-      </label>
-      <label className="flex items-center space-x-2">
-        <span>Blur radius</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          className="form-range w-full"
-          value={preprocessorSettings.blurRadius}
-          onChange={(e) => {
-            setPreprocessorSettings({
-              ...preprocessorSettings,
-              blurRadius: e.target.valueAsNumber,
-            });
-          }}
-        />
-      </label>
-      <label className="flex items-center space-x-2">
-        <span>Dilate</span>
-        <input
-          type="checkbox"
-          className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettings.dilate}
-          onChange={(e) => {
-            setPreprocessorSettings({
-              ...preprocessorSettings,
-              dilate: e.target.checked,
-            });
-          }}
-        />
-      </label>
-      <label className="flex items-center space-x-2">
-        <span>Invert</span>
-        <input
-          type="checkbox"
-          className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettings.invert}
-          onChange={(e) => {
-            setPreprocessorSettings({
-              ...preprocessorSettings,
-              invert: e.target.checked,
-            });
-          }}
-        />
-      </label>
-    </div>
+  return (<>
+    <div className="flex space-x-4">
+      <div className="w-1/3">
+        <div className="grid grid-cols-2 gap-4 items-center w-full">
+          <span>Is Binarize</span>
+          <input
+            type="checkbox"
+            className="form-checkbox h-5 w-5 text-blue-600"
+            checked={preprocessorSettings.isBinarize}
+            onChange={(e) => {
+              setPreprocessorSettings({
+                ...preprocessorSettings,
+                isBinarize: e.target.checked,
+              });
+            }}
+          />
 
-    <div className="flex justify-center">
-      <canvas
-        ref={previewRef}
-        className="border border-gray-300"
-      />
+          <span>Binarize</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            className="form-range"
+            value={preprocessorSettings.binarize}
+            onChange={(e) => {
+              setPreprocessorSettings({
+                ...preprocessorSettings,
+                binarize: e.target.valueAsNumber,
+              });
+            }}
+          />
+
+          <span>Blur radius</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            className="form-range"
+            value={preprocessorSettings.blurRadius}
+            onChange={(e) => {
+              setPreprocessorSettings({
+                ...preprocessorSettings,
+                blurRadius: e.target.valueAsNumber,
+              });
+            }}
+          />
+
+          <span>Dilate</span>
+          <input
+            type="checkbox"
+            className="form-checkbox h-5 w-5 text-blue-600"
+            checked={preprocessorSettings.dilate}
+            onChange={(e) => {
+              setPreprocessorSettings({
+                ...preprocessorSettings,
+                dilate: e.target.checked,
+              });
+            }}
+          />
+
+          <span>Invert</span>
+          <input
+            type="checkbox"
+            className="form-checkbox h-5 w-5 text-blue-600"
+            checked={preprocessorSettings.invert}
+            onChange={(e) => {
+              setPreprocessorSettings({
+                ...preprocessorSettings,
+                invert: e.target.checked,
+              });
+            }}
+          />
+        </div>
+      </div>
+      <div className="flex justify-center w-2/3">
+        <canvas
+          ref={previewRef}
+          className="border border-gray-300 max-w-full"
+        />
+      </div>
     </div>
-  </div>
-};
+    </>
+  );
+}
 
 function ScreenCaptureButtons({
   isCaptureLoopEnabled,
   setIsCaptureLoopEnabled,
+  imageDiffThreshold,
+  setImageDiffThreshold,
   selectScreen,
   processImage,
 }: {
   isCaptureLoopEnabled: boolean,
   setIsCaptureLoopEnabled: (v: boolean) => void,
+  imageDiffThreshold: number,
+  setImageDiffThreshold: (v: number) => void,
   selectScreen: () => void,
   processImage: () => void
 }) {
@@ -163,6 +166,16 @@ function ScreenCaptureButtons({
     >
       {isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop
     </button>
+    <span className="pl-4 py-2">Image change sensitivity</span>
+    <input
+      type="number"
+      step={0.001}
+      min={0}
+      max={1}
+      value={imageDiffThreshold}
+      className="w-20 text-black text-center rounded"
+      onChange={(e) => setImageDiffThreshold(e.target.valueAsNumber)}
+    />
   </div>
 }
 
@@ -189,7 +202,9 @@ export default function VideoCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
+
   const ocrResultRef = useRef<HTMLDivElement>(null);
+  const [isFlashing, setIsFlashing] = useState(false);
 
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
@@ -205,16 +220,22 @@ export default function VideoCapture() {
     dilate: false,
   });
   const [previewImageData, setPreviewImageData] = useState<CanvasCapture | null>(null);
+  const [imageDiffThreshold, setImageDiffThreshold] = useState(0.02);
 
   useEffect(() => {
     getSelectedImageData().then((imageData) => setPreviewImageData(imageData)).catch(console.error);
   }, [preprocessorSettings]);
 
+  const triggerOcrResultsFlash = () => {
+    setIsFlashing(true);
+    setTimeout(() => setIsFlashing(false), 500);
+  };
+
   const getSelectedImageData = async (): Promise<CanvasCapture | null> => {
     if (!canvasRef.current || !videoRef.current) { return null; }
 
     const captureCanvas = document.createElement('canvas');
-    const captureContext = captureCanvas.getContext('2d');
+    const captureContext = captureCanvas.getContext('2d', { willReadFrequently: true });
     if (!captureContext) { return null; }
 
     const canvasVideoScaleFactor = canvasRef.current.width / videoRef.current.videoWidth;
@@ -298,6 +319,7 @@ export default function VideoCapture() {
   const processImage = async (capture: CanvasCaptureImage) => {
     try {
       const result = await doOcr({ image: capture.imageBase64 });
+      triggerOcrResultsFlash();
       console.log('OCR result', result);
       if (result) {
         const text = result.fullTextAnnotation?.text || '';
@@ -358,7 +380,7 @@ export default function VideoCapture() {
     const newImages = [capture, ...images.slice(0, 2)];
     if (isSeekingStaticImageMode) {
       console.log('Seeking static image mode...');
-      const { equal, percentageDifferences } = await compareImages(newImages);
+      const { equal, percentageDifferences } = await compareImages(newImages, imageDiffThreshold);
       console.log('Image comparison result:', equal, percentageDifferences);
       if (equal) {
         console.log('Static image detected...');
@@ -371,7 +393,7 @@ export default function VideoCapture() {
         return;
       }
 
-      const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
+      const { equal, percentageDifferences } = await compareImages([capture, images[0]], imageDiffThreshold);
       console.log('Image comparison result:', equal, percentageDifferences);
       if (equal) { return; }
       console.log('Detected change in image...');
@@ -396,6 +418,8 @@ export default function VideoCapture() {
       <ScreenCaptureButtons
         isCaptureLoopEnabled={isCaptureLoopEnabled}
         setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
+        imageDiffThreshold={imageDiffThreshold}
+        setImageDiffThreshold={setImageDiffThreshold}
         selectScreen={selectScreen}
         processImage={async () => {
           const imageData = await getSelectedImageData();
@@ -408,7 +432,11 @@ export default function VideoCapture() {
         ref={ocrResultRef}
         contentEditable={true}
         suppressContentEditableWarning={true}
-        className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none overflow-scroll"
+        className={clsx(
+          isFlashing ? "flash-border" : "",
+          "border-solid border-transparent border-[3px]",
+          "w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 shadow-none resize-none outline-none overflow-scroll"
+        )}
       />
       <DummyYomichanSentenceTerminator />
     </div>

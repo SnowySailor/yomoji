@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { doOcr, compareImages } from './functions';
 import { preprocessImage } from '@/lib/image';
+import { useInterval } from 'usehooks-ts'
 
 export interface PreprocessorSettings {
   isBinarize: boolean;
@@ -189,36 +190,23 @@ export default function VideoCapture() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const ocrResultRef = useRef<HTMLDivElement>(null);
-  const startPosRef = useRef({ x: 0, y: 0 });
-  const endPosRef = useRef({ x: 0, y: 0 });
-  const isCaptureLoopEnabledRef = useRef<boolean>(false);
-  const imagesRef = useRef<CanvasCaptureImage[]>([]);
-  const isDrawingRef = useRef<boolean>(false);
-  const captureLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const preprocessorSettingsRef = useRef<PreprocessorSettings>({
+
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [endPos, setEndPos] = useState({ x: 0, y: 0 });
+  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState(false);
+  const [images, setImages] = useState<CanvasCaptureImage[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isSeekingStaticImageMode, setIsSeekingStaticImageMode] = useState(false);
+  const [preprocessorSettings, setPreprocessorSettings] = useState<PreprocessorSettings>({
     isBinarize: false,
     binarize: 50,
     blurRadius: 0,
     invert: false,
     dilate: false,
   });
-
   const [previewImageData, setPreviewImageData] = useState<CanvasCapture | null>(null);
-  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(isCaptureLoopEnabledRef.current);
-  const [preprocessorSettings, setPreprocessorSettings] = useState<PreprocessorSettings>(preprocessorSettingsRef.current);
 
   useEffect(() => {
-    isCaptureLoopEnabledRef.current = isCaptureLoopEnabled;
-    if (captureLoopIntervalRef.current) {
-      clearInterval(captureLoopIntervalRef.current);
-    }
-    if (isCaptureLoopEnabled) {
-      captureLoopIntervalRef.current = startCaptureSelectionLoop();
-    }
-  }, [isCaptureLoopEnabled]);
-
-  useEffect(() => {
-    preprocessorSettingsRef.current = preprocessorSettings;
     getSelectedImageData().then((imageData) => setPreviewImageData(imageData)).catch(console.error);
   }, [preprocessorSettings]);
 
@@ -230,14 +218,14 @@ export default function VideoCapture() {
     if (!captureContext) { return null; }
 
     const canvasVideoScaleFactor = canvasRef.current.width / videoRef.current.videoWidth;
-    const width = Math.floor(((endPosRef.current.x - startPosRef.current.x) / canvasVideoScaleFactor) * window.devicePixelRatio);
-    const height = Math.floor(((endPosRef.current.y - startPosRef.current.y) / canvasVideoScaleFactor) * window.devicePixelRatio);
+    const width = Math.floor(((endPos.x - startPos.x) / canvasVideoScaleFactor) * window.devicePixelRatio);
+    const height = Math.floor(((endPos.y - startPos.y) / canvasVideoScaleFactor) * window.devicePixelRatio);
     captureCanvas.width = width;
     captureCanvas.height = height;
 
     const startPosScaled = {
-      x: Math.floor((startPosRef.current.x / canvasVideoScaleFactor) * window.devicePixelRatio),
-      y: Math.floor((startPosRef.current.y / canvasVideoScaleFactor) * window.devicePixelRatio),
+      x: Math.floor((startPos.x / canvasVideoScaleFactor) * window.devicePixelRatio),
+      y: Math.floor((startPos.y / canvasVideoScaleFactor) * window.devicePixelRatio),
     };
 
     captureContext.drawImage(
@@ -257,7 +245,7 @@ export default function VideoCapture() {
       return null;
     }
 
-    captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettingsRef.current), 0, 0);
+    captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
     const imageBlob: Blob | null = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
     if (!imageBlob) {
       return null;
@@ -280,19 +268,17 @@ export default function VideoCapture() {
   };
 
   const resizeCanvas = (): void => {
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) { return; }
-    const { width } = canvas.getBoundingClientRect();
-    const { videoWidth, videoHeight } = video;
+    if (!canvasRef.current || !videoRef.current) { return; }
+    const { width } = canvasRef.current.getBoundingClientRect();
+    const { videoWidth, videoHeight } = videoRef.current;
   
     const videoAspectRatio = videoWidth / videoHeight;
     const canvasHeight = width / videoAspectRatio;
   
     const { devicePixelRatio: ratio = 1 } = window;
-    const context = canvas.getContext('2d');
-    canvas.width = width;
-    canvas.height = canvasHeight;
+    const context = canvasRef.current.getContext('2d');
+    canvasRef.current.width = width;
+    canvasRef.current.height = canvasHeight;
 
     context?.scale(ratio, ratio);
   };
@@ -326,65 +312,31 @@ export default function VideoCapture() {
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { offsetX , offsetY } = getScaledCoordinated(e);
-    startPosRef.current = { x: offsetX, y: offsetY };
-    isDrawingRef.current = true;
+    setStartPos({ x: offsetX, y: offsetY });
+    setIsDrawing(true);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) { return; }
+    if (!isDrawing) { return; }
 
     const { offsetX , offsetY } = getScaledCoordinated(e);
-    endPosRef.current = { x: offsetX, y: offsetY };
+    setEndPos({ x: offsetX, y: offsetY });
 
     const context = canvasRef.current?.getContext('2d', { willReadFrequently: true });
     if (context && canvasRef.current) {
       context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       context.strokeStyle = 'red';
       context.lineWidth = 2;
-      context.strokeRect(startPosRef.current.x, startPosRef.current.y, offsetX - startPosRef.current.x, offsetY - startPosRef.current.y);
+      context.strokeRect(startPos.x, startPos.y, offsetX - startPos.x, offsetY - startPos.y);
     }
   };
 
   const endDrawing = async () => {
-    isDrawingRef.current = false;
+    setIsDrawing(false);
     savePreviewImage().catch(console.error);
     const imageData = await getSelectedImageData();
     if (!imageData) { return; }
     await processImage(imageData.capture);
-  };
-
-  const startCaptureSelectionLoop = () => {
-    let isSeekingStaticImageMode = false;
-    return setInterval(async () => {
-      if (!isCaptureLoopEnabledRef.current) { return; }
-      const imageData = await getSelectedImageData();
-      if (!imageData) { return; }
-      const { capture } = imageData;
-  
-      const newImages = [capture, ...imagesRef.current.slice(0, 2)];
-      if (isSeekingStaticImageMode) {
-        console.log('Seeking static image mode...');
-        const { equal, percentageDifferences } = await compareImages(newImages);
-        console.log('Image comparison result:', equal, percentageDifferences);
-        if (equal) {
-          console.log('Static image detected...');
-          isSeekingStaticImageMode = false;
-          await processImage(capture);
-        }
-      } else {
-        if (imagesRef.current.length === 0) {
-          imagesRef.current = [capture];
-          return;
-        }
-  
-        const { equal, percentageDifferences } = await compareImages([capture, imagesRef.current[0]]);
-        console.log('Image comparison result:', equal, percentageDifferences);
-        if (equal) { return; }
-        console.log('Detected change in image...');
-        isSeekingStaticImageMode = true;
-      }
-      imagesRef.current = newImages;
-    }, 1000);
   };
 
   useEffect(() => {
@@ -396,6 +348,37 @@ export default function VideoCapture() {
       previewRef.current.getContext('2d')?.drawImage(canvas, 0, 0);
     }
   }, [previewRef, previewImageData]);
+
+  useInterval(async () => {
+    if (!isCaptureLoopEnabled) { return; }
+    const imageData = await getSelectedImageData();
+    if (!imageData) { return; }
+    const { capture } = imageData;
+
+    const newImages = [capture, ...images.slice(0, 2)];
+    if (isSeekingStaticImageMode) {
+      console.log('Seeking static image mode...');
+      const { equal, percentageDifferences } = await compareImages(newImages);
+      console.log('Image comparison result:', equal, percentageDifferences);
+      if (equal) {
+        console.log('Static image detected...');
+        setIsSeekingStaticImageMode(false);
+        await processImage(capture);
+      }
+    } else {
+      if (images.length === 0) {
+        setImages([capture]);
+        return;
+      }
+
+      const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
+      console.log('Image comparison result:', equal, percentageDifferences);
+      if (equal) { return; }
+      console.log('Detected change in image...');
+      setIsSeekingStaticImageMode(true);
+    }
+    setImages(newImages);
+  }, 1000);
 
   return <>
     <div>

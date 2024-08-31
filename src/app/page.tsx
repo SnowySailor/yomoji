@@ -187,16 +187,6 @@ function getScaledCoordinated(e: React.MouseEvent<HTMLCanvasElement>): { offsetX
 export default function VideoCapture() {
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  const ocrResultRef = useRef<HTMLDivElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [images, setImages] = useState<CanvasCaptureImage[]>([]);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
-  const [isSeekingStaticImageMode, setIsSeekingStaticImageMode] = useState<boolean>(false);
   const [preprocessorSettings, setPreprocessorSettings] = useState<PreprocessorSettings>({
     isBinarize: false,
     binarize: 50,
@@ -204,6 +194,17 @@ export default function VideoCapture() {
     invert: false,
     dilate: false,
   });
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const ocrResultRef = useRef<HTMLDivElement>(null);
+
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
+  const [images, setImages] = useState<CanvasCaptureImage[]>([]);
+  const [previewImageData, setPreviewImageData] = useState<CanvasCapture | null>(null);
+  const [captureLoopIntervalId, setCaptureLoopIntervalId] = useState<ReturnType<typeof setInterval> | null>(null);
 
   const getSelectedImageData = useCallback(async (): Promise<CanvasCapture | undefined> => {
     if (!canvasRef.current || !videoRef.current) { return; }
@@ -217,6 +218,7 @@ export default function VideoCapture() {
     const height = Math.floor(((endPos.y - startPos.y) / canvasVideoScaleFactor) * window.devicePixelRatio);
     captureCanvas.width = width;
     captureCanvas.height = height;
+    console.log('startPos:', startPos, 'endPos:', endPos, 'width:', width, 'height:', height);
 
     const startPosScaled = {
       x: Math.floor((startPos.x / canvasVideoScaleFactor) * window.devicePixelRatio),
@@ -256,17 +258,11 @@ export default function VideoCapture() {
     } as CanvasCapture;
   }, [startPos, endPos, preprocessorSettings, videoRef, canvasRef]);
 
-  const putPreviewImage = useCallback(async () => {
+  const savePreviewImage = useCallback(async () => {
     const imageData = await getSelectedImageData();
     if (!imageData) { return; }
-    const { capture: { width, height }, canvas } = imageData;
-
-    if (previewRef.current) {
-      previewRef.current.width = width;
-      previewRef.current.height = height;
-      previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
-    }
-  }, [getSelectedImageData, preprocessorSettings, previewRef]);
+    setPreviewImageData(imageData);
+  }, [getSelectedImageData]);
 
   const resizeCanvas = useCallback((): boolean => {
     const canvas = canvasRef.current;
@@ -300,15 +296,31 @@ export default function VideoCapture() {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia();
       videoRef.current.srcObject = stream;
-      setIsCaptureLoopEnabled(true);
+      // setIsCaptureLoopEnabled(true);
       resizeCanvas();
     } catch (error) {
       console.error('Error accessing screen: ', error);
     }
   }, [videoRef, resizeCanvas]);
 
+  const processImage = useCallback(async (capture: CanvasCaptureImage) => {
+    try {
+      const result = await doOcr({ image: capture.imageBase64 });
+      console.log('OCR result:', result);
+      if (result) {
+        const text = result.fullTextAnnotation?.text || '';
+        if (ocrResultRef.current) {
+          ocrResultRef.current.innerText = text;
+        }
+      }
+    } catch (error) {
+      console.error('Error processing image:', error);
+    }
+  }, [ocrResultRef]);
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { offsetX , offsetY } = getScaledCoordinated(e);
+    console.log('startDrawing:', offsetX, offsetY);
     setStartPos({ x: offsetX, y: offsetY });
     setIsDrawing(true);
   };
@@ -319,7 +331,7 @@ export default function VideoCapture() {
     const { offsetX , offsetY } = getScaledCoordinated(e);
     setEndPos({ x: offsetX, y: offsetY });
 
-    const context = canvasRef.current?.getContext('2d');
+    const context = canvasRef.current?.getContext('2d', { willReadFrequently: true });
     if (context && canvasRef.current) {
       context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       context.strokeStyle = 'red';
@@ -330,89 +342,66 @@ export default function VideoCapture() {
 
   const endDrawing = useCallback(async () => {
     setIsDrawing(false);
-    putPreviewImage().then(console.error);
-  }, [putPreviewImage]);
+    savePreviewImage().catch(console.error);
+    const imageData = await getSelectedImageData();
+    if (!imageData) { return; }
+    await processImage(imageData.capture);
+  }, [savePreviewImage, processImage, getSelectedImageData]);
 
-  const processImage = useCallback(async () => {
-  }, []);
+  const runCaptureSelectionLoop = useCallback(async () => {
+    let isSeekingStaticImageMode = false;
+    if (!isCaptureLoopEnabled) { console.log('dying'); return; }
+    const imageData = await getSelectedImageData();
+    if (!imageData) { return; }
+    const { capture } = imageData;
 
-  // const captureSelection = useCallback(async () => {
-  //   const imageData = await getSelectedImageData();
-  //   if (!imageData) { return; }
-  //   const { capture  } = imageData;
+    const newImages = [capture, ...images.slice(0, 2)];
+    if (isSeekingStaticImageMode) {
+      const { equal, percentageDifferences } = await compareImages(newImages);
+      console.log('Image comparison result:', equal, percentageDifferences);
+      if (equal) {
+        isSeekingStaticImageMode = false;
+        await processImage(capture);
+      }
+    } else {
+      if (images.length === 0) {
+        setImages([capture]);
+        return;
+      }
 
-  //   if (images.length > 0) {
-  //     const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
-  //     // console.log('Image comparison result:', equal, percentageDifferences);
-  //     if (equal) {
-  //       // console.log('No change in image detected', new Date().toISOString());
-  //     } else {
-  //       // console.log('Detected change in image, reprocessing...', new Date().toISOString());
-  //       setIsSeekingStaticImageMode(true);
-  //     }
-  //   }
+      const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
+      console.log('Image comparison result:', equal, percentageDifferences);
+      if (equal) { return; }
+      console.log('Detected change in image, reprocessing...', new Date().toISOString());
+      isSeekingStaticImageMode = true;
+    }
+    setImages(newImages);
+  }, [isCaptureLoopEnabled, getSelectedImageData, images, processImage]);
 
-  //   // console.log('Saving most recent image...', new Date().toISOString());
-  //   setImages((current) => {
-  //     while (current && current.length > 2) {
-  //       current.pop();
-  //     }
-  //     return [capture, ...(current || [])];
-  //   });
-  //   return capture;
-  // }, [
-  //   images, getSelectedImageData
-  // ]);
+  const startCaptureSelectionLoop = useCallback(() => {
+    return setInterval(runCaptureSelectionLoop, 1000);
+  }, [runCaptureSelectionLoop]);
 
-  // const processImage = useCallback(async (capture?: CanvasCaptureImage) => {
-  //   if (images.length === 0 && !capture) {
-  //     return;
-  //   }
-
-  //   try {
-  //     const imageToProcess = capture || images[0];
-  //     const result = await doOcr({ image: imageToProcess.imageBase64 });
-  //     // console.log('OCR result:', result);
-  //     if (result) {
-  //       const text = result.fullTextAnnotation?.text || '';
-  //       if (ocrResultRef.current) {
-  //         ocrResultRef.current.innerText = text;
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.error('Error processing image:', error);
-  //   }
-  // }, [images]);
+  useEffect(() => {
+    if (!previewImageData) { return; }
+    const { capture: { width, height }, canvas } = previewImageData;
+    if (previewRef.current) {
+      previewRef.current.width = width;
+      previewRef.current.height = height;
+      previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
+    }
+  }, [preprocessorSettings, previewRef, previewImageData]);
 
   // useEffect(() => {
-  //   const handle = async () => {
-  //     if (isSeekingStaticImageMode) {
-  //       const { equal, percentageDifferences } = await compareImages(images);
-  //       // console.log('Image comparison result:', equal, percentageDifferences);
-  //       if (equal) {
-  //         setIsSeekingStaticImageMode(false);
-  //         await processImage();
-  //       }
-  //     }
+  //   if (isCaptureLoopEnabled && !captureLoopIntervalId) {
+  //     console.log('Starting capture loop...');
+  //     runCaptureSelectionLoop().then(intervalId => setCaptureLoopIntervalId(intervalId)).catch(console.error);
   //   }
-  //   handle().catch(console.error);
-  // }, [images, isSeekingStaticImageMode, processImage]);
-
-  // useEffect(() => {
-  //   let intervalId: NodeJS.Timeout | null = null;
-
-  //   if (isCaptureLoopEnabled) {
-  //     intervalId = setInterval(async () => {
-  //       await captureSelection();
-  //     }, 1000);
+  //   if (!isCaptureLoopEnabled && captureLoopIntervalId) {
+  //     console.log('Stopping capture loop...');
+  //     clearTimeout(captureLoopIntervalId);
   //   }
-
-  //   return () => {
-  //     if (intervalId) {
-  //       clearInterval(intervalId);
-  //     }
-  //   };
-  // }, [isCaptureLoopEnabled, captureSelection]);
+  // }, [captureLoopIntervalId, isCaptureLoopEnabled, runCaptureSelectionLoop]);
 
   return <>
     <div>
@@ -429,9 +418,19 @@ export default function VideoCapture() {
       <br/>
       <ScreenCaptureButtons
         isCaptureLoopEnabled={isCaptureLoopEnabled}
-        setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
+        setIsCaptureLoopEnabled={(e) => {
+          console.log('Setting capture loop enabled:', e);
+          setIsCaptureLoopEnabled(e);
+          if (e) {
+            startCaptureSelectionLoop();
+          }
+        }}
         selectScreen={selectScreen}
-        processImage={processImage}
+        processImage={async () => {
+          const imageData = await getSelectedImageData();
+          if (!imageData) { return; }
+          await processImage(imageData.capture);
+        }}
       />
       <DummyYomichanSentenceTerminator />
       <div
@@ -440,7 +439,6 @@ export default function VideoCapture() {
         suppressContentEditableWarning={true}
         className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none overflow-scroll"
       />
-      {/* <textarea ref={textAreaRef} className="w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 border-0 shadow-none resize-none outline-none" /> */}
       <DummyYomichanSentenceTerminator />
     </div>
     <ImagePreprocessor preprocessorSettings={preprocessorSettings} setPreprocessorSettings={setPreprocessorSettings} previewRef={previewRef} />

@@ -279,31 +279,22 @@ export default function VideoCapture() {
     setPreviewImageData(imageData);
   };
 
-  const resizeCanvas = (): boolean => {
+  const resizeCanvas = (): void => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (!canvas || !video) { return false; }
-    const { width, height } = canvas.getBoundingClientRect();
+    if (!canvas || !video) { return; }
+    const { width } = canvas.getBoundingClientRect();
     const { videoWidth, videoHeight } = video;
   
-    if (
-      canvas.width !== width
-      || canvas.height !== height
-      || canvas.width !== videoWidth
-      || canvas.height !== videoHeight
-    ) {
-      const videoAspectRatio = videoWidth / videoHeight;
-      const canvasHeight = width / videoAspectRatio;
-    
-      const { devicePixelRatio: ratio = 1 } = window;
-      const context = canvas.getContext('2d');
-      canvas.width = width;
-      canvas.height = canvasHeight;
+    const videoAspectRatio = videoWidth / videoHeight;
+    const canvasHeight = width / videoAspectRatio;
   
-      context?.scale(ratio, ratio);
-      return true;
-    }
-    return false;
+    const { devicePixelRatio: ratio = 1 } = window;
+    const context = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = canvasHeight;
+
+    context?.scale(ratio, ratio);
   };
 
   const selectScreen = async () => {

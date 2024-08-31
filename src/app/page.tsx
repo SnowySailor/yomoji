@@ -321,7 +321,7 @@ export default function VideoCapture() {
   const processImage = async (capture: CanvasCaptureImage) => {
     try {
       const result = await doOcr({ image: capture.imageBase64 });
-      console.log('OCR result:', result);
+      console.log('OCR result', result);
       if (result) {
         const text = result.fullTextAnnotation?.text || '';
         if (ocrResultRef.current) {
@@ -335,7 +335,6 @@ export default function VideoCapture() {
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { offsetX , offsetY } = getScaledCoordinated(e);
-    console.log('startDrawing:', offsetX, offsetY);
     startPosRef.current = { x: offsetX, y: offsetY };
     isDrawingRef.current = true;
   };
@@ -366,7 +365,7 @@ export default function VideoCapture() {
   const startCaptureSelectionLoop = () => {
     let isSeekingStaticImageMode = false;
     return setInterval(async () => {
-      if (!isCaptureLoopEnabledRef.current) { console.log('dying'); return; }
+      if (!isCaptureLoopEnabledRef.current) { return; }
       const imageData = await getSelectedImageData();
       if (!imageData) { return; }
       const { capture } = imageData;

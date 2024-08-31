@@ -1,36 +1,13 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Yomoji
+This is a browser OCR app built using NextJS that allows you to use Google Cloud Vision to automatically convert images from your screen into editable/scannable text
 
-## Getting Started
+You will need Docker and a Google Service Account key with Cloud Vision API access. The API key can be created in the Google Cloud Console and every user gets 1000 free Cloud Vision API requests per month, and after that it's $1.50 per 1000 as of August 2024.
 
-First, run the development server:
+## Running
+1. Clone this repository
+1. Copy your Google JSON key into `./config/google_servive_account.json`
+1. Run `docker compose up`
+1. Open `http://localhost:3001` and click the "Select screen" button (you may have to scroll down)
+1. Select a screen and you will be able to draw a rectangle around whatever you want to run OCR on
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+The tool will automatically update if it detects a change in content on the screen, populating the results box below your stream. If you find that it is refreshing too often due to dynamic backgrounds, you can use the filters at the bottom of the page. There is a preview for the filter result underneath the filter settings. Try to adjust it so that only the text is visible; this will minimize the number of false-positive detections and minimize your OCR API usage.

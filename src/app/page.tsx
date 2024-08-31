@@ -135,13 +135,21 @@ function ImagePreprocessor({
 function ScreenCaptureButtons({
   isCaptureLoopEnabled,
   setIsCaptureLoopEnabled,
-  selectScreen
+  selectScreen,
+  processImage
 }: {
   isCaptureLoopEnabled: boolean,
   setIsCaptureLoopEnabled: (enabled: boolean) => void,
-  selectScreen: () => void
+  selectScreen: () => void,
+  processImage: () => void
 }) {
   return <div className="flex space-x-4">
+    <button
+      onClick={() => { processImage() }}
+      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      Force process image
+    </button>
     <button
       onClick={selectScreen}
       className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -153,21 +161,6 @@ function ScreenCaptureButtons({
       className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
     >
       {isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop
-    </button>
-  </div>
-}
-
-function ManualControlbuttons({
-  processImage
-}: {
-  processImage: () => void
-}) {
-  return <div className="flex space-x-4">
-    <button
-      onClick={() => { processImage() }}
-      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      Force process image
     </button>
   </div>
 }
@@ -434,7 +427,6 @@ export default function VideoCapture() {
   }, [isCaptureLoopEnabled, captureSelection]);
 
   return <>
-    <ScreenCaptureButtons isCaptureLoopEnabled={isCaptureLoopEnabled} setIsCaptureLoopEnabled={setIsCaptureLoopEnabled} selectScreen={selectScreen} />
     <div>
       <div className="relative w-full h-auto">
         <video ref={videoRef} autoPlay className="w-full h-auto" />
@@ -447,7 +439,12 @@ export default function VideoCapture() {
         />
       </div>
       <br/>
-      <ManualControlbuttons processImage={processImage} />
+      <ScreenCaptureButtons
+        isCaptureLoopEnabled={isCaptureLoopEnabled}
+        setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
+        selectScreen={selectScreen}
+        processImage={processImage}
+      />
       <DummyYomichanSentenceTerminator />
       <div
         ref={ocrResultRef}

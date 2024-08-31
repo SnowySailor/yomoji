@@ -21,6 +21,7 @@ type EqualityResult = {
 }
 
 export const doOcr = async (data: OcrData) => {
+  return false;
   try {
     console.log('Spending money on OCR...');
     const buffer = Buffer.from(data.image, 'base64');

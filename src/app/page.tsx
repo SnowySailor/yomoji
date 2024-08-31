@@ -135,13 +135,21 @@ function ImagePreprocessor({
 function ScreenCaptureButtons({
   isCaptureLoopEnabled,
   setIsCaptureLoopEnabled,
-  selectScreen
+  selectScreen,
+  processImage,
 }: {
   isCaptureLoopEnabled: boolean,
   setIsCaptureLoopEnabled: (enabled: boolean) => void,
-  selectScreen: () => void
+  selectScreen: () => void,
+  processImage: () => void
 }) {
   return <div className="flex space-x-4">
+    <button
+      onClick={() => { processImage() }}
+      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      Force process image
+    </button>
     <button
       onClick={selectScreen}
       className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -157,43 +165,34 @@ function ScreenCaptureButtons({
   </div>
 }
 
-function ManualControlbuttons({
-  processImage
-}: {
-  processImage: () => void
-}) {
-  return <div className="flex space-x-4">
-    <button
-      onClick={() => { processImage() }}
-      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      Force process image
-    </button>
-  </div>
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, _) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]);
+    }
+    reader.readAsDataURL(blob);
+  });
 }
 
-function resizeCanvas(canvas: HTMLCanvasElement | null) {
-  if (!canvas) { return false; }
-  const { width, height } = canvas.getBoundingClientRect();
-  if (canvas.width !== width || canvas.height !== height) {
-    const { devicePixelRatio:ratio = 1 } = window;
-    const context = canvas.getContext('2d');
-    canvas.width = width;
-    canvas.height = height;
-    context?.scale(ratio, ratio);
-    return true;
-  }
-  return false;
+function getScaledCoordinated(e: React.MouseEvent<HTMLCanvasElement>): { offsetX: number, offsetY: number } {
+  const { offsetX, offsetY } = e.nativeEvent;
+  return {
+    offsetX: offsetX / window.devicePixelRatio,
+    offsetY: offsetY / window.devicePixelRatio,
+  };
 }
 
 export default function VideoCapture() {
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [endPos, setEndPos] = useState({ x: 0, y: 0 });
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const ocrResultRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [endPos, setEndPos] = useState({ x: 0, y: 0 });
   const [images, setImages] = useState<CanvasCaptureImage[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(false);
@@ -206,72 +205,6 @@ export default function VideoCapture() {
     dilate: false,
   });
 
-  const selectScreen = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia();
-      setStream(stream);
-      setIsCaptureLoopEnabled(true);
-      resizeCanvas(canvasRef.current);
-    } catch (error) {
-      console.error('Error accessing screen: ', error);
-    }
-  }
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { offsetX, offsetY } = getAdjustedCoordinates(e);
-    setStartPos({ x: offsetX, y: offsetY });
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) { return; }
-
-    const { offsetX, offsetY } = getAdjustedCoordinates(e);
-    setEndPos({ x: offsetX, y: offsetY });
-
-    const context = canvasRef.current?.getContext('2d');
-    if (context && canvasRef.current) {
-      context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      context.strokeStyle = 'red';
-      context.lineWidth = 2;
-      context.strokeRect(startPos.x, startPos.y, offsetX - startPos.x, offsetY - startPos.y);
-    }
-  };
-
-  function blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, _) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]);
-      }
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  const getAdjustedCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current || !videoRef.current) {
-      return {
-        offsetX: e.nativeEvent.offsetX,
-        offsetY: e.nativeEvent.offsetY
-      };
-    }
-
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    const videoWidth = videoRef.current.videoWidth;
-    const videoHeight = videoRef.current.videoHeight;
-    const realCanvasWidth = canvasRect.width;
-    const realCanvasHeight = canvasRect.height;
-
-    const scaleX = videoWidth / realCanvasWidth;
-    const scaleY = videoHeight / realCanvasHeight;
-
-    return {
-      offsetX: e.nativeEvent.offsetX * scaleX,
-      offsetY: e.nativeEvent.offsetY * scaleY
-    };
-  };
-
   const getSelectedImageData = useCallback(async (): Promise<CanvasCapture | undefined> => {
     if (!canvasRef.current || !videoRef.current) { return; }
 
@@ -279,26 +212,27 @@ export default function VideoCapture() {
     const captureContext = captureCanvas.getContext('2d');
     if (!captureContext) { return; }
 
-    let hackMultiple = 1;
-    // if (window.devicePixelRatio >= 2) {
-    //   hackMultiple = window.devicePixelRatio;
-    // }
+    const canvasVideoScaleFactor = canvasRef.current.width / videoRef.current.videoWidth;
+    const width = Math.floor(((endPos.x - startPos.x) / canvasVideoScaleFactor) * window.devicePixelRatio);
+    const height = Math.floor(((endPos.y - startPos.y) / canvasVideoScaleFactor) * window.devicePixelRatio);
+    captureCanvas.width = width;
+    captureCanvas.height = height;
 
-    const width = endPos.x - startPos.x;
-    const height = endPos.y - startPos.y;
-    captureCanvas.width = width * hackMultiple;
-    captureCanvas.height = height * hackMultiple;
+    const startPosScaled = {
+      x: Math.floor((startPos.x / canvasVideoScaleFactor) * window.devicePixelRatio),
+      y: Math.floor((startPos.y / canvasVideoScaleFactor) * window.devicePixelRatio),
+    };
 
     captureContext.drawImage(
       videoRef.current,
-      startPos.x * hackMultiple,
-      startPos.y * hackMultiple,
-      width * hackMultiple,
-      height * hackMultiple,
+      startPosScaled.x,
+      startPosScaled.y,
+      width,
+      height,
       0,
       0,
-      width * hackMultiple,
-      height * hackMultiple
+      width,
+      height
     );
 
     if (captureCanvas.width === 0 || captureCanvas.height === 0) {
@@ -320,124 +254,170 @@ export default function VideoCapture() {
       },
       canvas: captureCanvas,
     } as CanvasCapture;
-  }, [endPos, startPos, preprocessorSettings, videoRef?.current?.srcObject]);
+  }, [startPos, endPos, preprocessorSettings, videoRef, canvasRef]);
 
-  const captureSelection = useCallback(async () => {
+  const putPreviewImage = useCallback(async () => {
     const imageData = await getSelectedImageData();
     if (!imageData) { return; }
-    const { capture  } = imageData;
+    const { capture: { width, height }, canvas } = imageData;
 
-    if (images.length > 0) {
-      const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
-      console.log('Image comparison result:', equal, percentageDifferences);
-      if (equal) {
-        console.log('No change in image detected', new Date().toISOString());
-      } else {
-        console.log('Detected change in image, reprocessing...', new Date().toISOString());
-        setIsSeekingStaticImageMode(true);
-      }
+    if (previewRef.current) {
+      previewRef.current.width = width;
+      previewRef.current.height = height;
+      previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
     }
+  }, [getSelectedImageData, preprocessorSettings, previewRef]);
 
-    console.log('Saving most recent image...', new Date().toISOString());
-    setImages((current) => {
-      while (current && current.length > 2) {
-        current.pop();
-      }
-      return [capture, ...(current || [])];
-    });
-    return capture;
-  }, [
-    images, getSelectedImageData
-  ]);
-
-  const processImage = useCallback(async (capture?: CanvasCaptureImage) => {
-    if (images.length === 0 && !capture) {
-      return;
+  const resizeCanvas = useCallback((): boolean => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) { return false; }
+    const { width, height } = canvas.getBoundingClientRect();
+    const { videoWidth, videoHeight } = video;
+  
+    if (
+      canvas.width !== width
+      || canvas.height !== height
+      || canvas.width !== videoWidth
+      || canvas.height !== videoHeight
+    ) {
+      const videoAspectRatio = videoWidth / videoHeight;
+      const canvasHeight = width / videoAspectRatio;
+    
+      const { devicePixelRatio: ratio = 1 } = window;
+      const context = canvas.getContext('2d');
+      canvas.width = width;
+      canvas.height = canvasHeight;
+  
+      context?.scale(ratio, ratio);
+      return true;
     }
+    return false;
+  }, [canvasRef, videoRef]);
 
+  const selectScreen = useCallback(async () => {
+    if (!videoRef.current) { return; }
     try {
-      const imageToProcess = capture || images[0];
-      const result = await doOcr({ image: imageToProcess.imageBase64 });
-      console.log('OCR result:', result);
-      if (result) {
-        const text = result.fullTextAnnotation?.text || '';
-        if (ocrResultRef.current) {
-          ocrResultRef.current.innerText = text;
-        }
-      }
+      const stream = await navigator.mediaDevices.getDisplayMedia();
+      videoRef.current.srcObject = stream;
+      setIsCaptureLoopEnabled(true);
+      resizeCanvas();
     } catch (error) {
-      console.error('Error processing image:', error);
+      console.error('Error accessing screen: ', error);
     }
-  }, [images]);
+  }, [videoRef, resizeCanvas]);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { offsetX , offsetY } = getScaledCoordinated(e);
+    setStartPos({ x: offsetX, y: offsetY });
+    setIsDrawing(true);
+  };
+
+  const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) { return; }
+
+    const { offsetX , offsetY } = getScaledCoordinated(e);
+    setEndPos({ x: offsetX, y: offsetY });
+
+    const context = canvasRef.current?.getContext('2d');
+    if (context && canvasRef.current) {
+      context.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      context.strokeStyle = 'red';
+      context.lineWidth = 2;
+      context.strokeRect(startPos.x, startPos.y, offsetX - startPos.x, offsetY - startPos.y);
+    }
+  }, [isDrawing, startPos, canvasRef]);
 
   const endDrawing = useCallback(async () => {
     setIsDrawing(false);
-    const capture = await captureSelection();
-    await processImage(capture);
-  }, [captureSelection, processImage]);
+    putPreviewImage().then(console.error);
+  }, [putPreviewImage]);
 
-  useEffect(() => {
-    async function handle() { 
-      const imageData = await getSelectedImageData();
-      if (!imageData) { return; }
-      const { capture: { width, height }, canvas } = imageData;
+  const processImage = useCallback(async () => {
+  }, []);
 
-      if (previewRef.current) {
-        previewRef.current.width = width;
-        previewRef.current.height = height;
-        previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettings), 0, 0);
-      }
-    }
-    handle().catch(console.error);
-  }, [endPos, startPos, videoRef, preprocessorSettings, getSelectedImageData]);
+  // const captureSelection = useCallback(async () => {
+  //   const imageData = await getSelectedImageData();
+  //   if (!imageData) { return; }
+  //   const { capture  } = imageData;
 
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.onloadedmetadata = () => {
-        if (canvasRef.current && videoRef.current) {
-          canvasRef.current.width = videoRef.current.videoWidth;
-          canvasRef.current.height = videoRef.current.videoHeight;
-        }
-      };
-    }
-  }, [stream]);
+  //   if (images.length > 0) {
+  //     const { equal, percentageDifferences } = await compareImages([capture, images[0]]);
+  //     // console.log('Image comparison result:', equal, percentageDifferences);
+  //     if (equal) {
+  //       // console.log('No change in image detected', new Date().toISOString());
+  //     } else {
+  //       // console.log('Detected change in image, reprocessing...', new Date().toISOString());
+  //       setIsSeekingStaticImageMode(true);
+  //     }
+  //   }
 
-  useEffect(() => {
-    const handle = async () => {
-      if (isSeekingStaticImageMode) {
-        const { equal, percentageDifferences } = await compareImages(images);
-        console.log('Image comparison result:', equal, percentageDifferences);
-        if (equal) {
-          setIsSeekingStaticImageMode(false);
-          await processImage();
-        }
-      }
-    }
-    handle().catch(console.error);
-  }, [images, isSeekingStaticImageMode, processImage]);
+  //   // console.log('Saving most recent image...', new Date().toISOString());
+  //   setImages((current) => {
+  //     while (current && current.length > 2) {
+  //       current.pop();
+  //     }
+  //     return [capture, ...(current || [])];
+  //   });
+  //   return capture;
+  // }, [
+  //   images, getSelectedImageData
+  // ]);
 
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+  // const processImage = useCallback(async (capture?: CanvasCaptureImage) => {
+  //   if (images.length === 0 && !capture) {
+  //     return;
+  //   }
 
-    if (isCaptureLoopEnabled) {
-      intervalId = setInterval(async () => {
-        await captureSelection();
-      }, 1000);
-    }
+  //   try {
+  //     const imageToProcess = capture || images[0];
+  //     const result = await doOcr({ image: imageToProcess.imageBase64 });
+  //     // console.log('OCR result:', result);
+  //     if (result) {
+  //       const text = result.fullTextAnnotation?.text || '';
+  //       if (ocrResultRef.current) {
+  //         ocrResultRef.current.innerText = text;
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error processing image:', error);
+  //   }
+  // }, [images]);
 
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isCaptureLoopEnabled, captureSelection]);
+  // useEffect(() => {
+  //   const handle = async () => {
+  //     if (isSeekingStaticImageMode) {
+  //       const { equal, percentageDifferences } = await compareImages(images);
+  //       // console.log('Image comparison result:', equal, percentageDifferences);
+  //       if (equal) {
+  //         setIsSeekingStaticImageMode(false);
+  //         await processImage();
+  //       }
+  //     }
+  //   }
+  //   handle().catch(console.error);
+  // }, [images, isSeekingStaticImageMode, processImage]);
+
+  // useEffect(() => {
+  //   let intervalId: NodeJS.Timeout | null = null;
+
+  //   if (isCaptureLoopEnabled) {
+  //     intervalId = setInterval(async () => {
+  //       await captureSelection();
+  //     }, 1000);
+  //   }
+
+  //   return () => {
+  //     if (intervalId) {
+  //       clearInterval(intervalId);
+  //     }
+  //   };
+  // }, [isCaptureLoopEnabled, captureSelection]);
 
   return <>
-    <ScreenCaptureButtons isCaptureLoopEnabled={isCaptureLoopEnabled} setIsCaptureLoopEnabled={setIsCaptureLoopEnabled} selectScreen={selectScreen} />
     <div>
       <div className="relative w-full h-auto">
-        <video ref={videoRef} autoPlay className="w-full h-auto" />
+        <video ref={videoRef} autoPlay className="w-full h-auto" onResize={resizeCanvas}/>
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
@@ -447,7 +427,12 @@ export default function VideoCapture() {
         />
       </div>
       <br/>
-      <ManualControlbuttons processImage={processImage} />
+      <ScreenCaptureButtons
+        isCaptureLoopEnabled={isCaptureLoopEnabled}
+        setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
+        selectScreen={selectScreen}
+        processImage={processImage}
+      />
       <DummyYomichanSentenceTerminator />
       <div
         ref={ocrResultRef}

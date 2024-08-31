@@ -403,7 +403,7 @@ export default function VideoCapture() {
     if (previewRef.current) {
       previewRef.current.width = width;
       previewRef.current.height = height;
-      previewRef.current.getContext('2d')?.putImageData(preprocessImage(canvas, preprocessorSettingsRef.current), 0, 0);
+      previewRef.current.getContext('2d')?.drawImage(canvas, 0, 0);
     }
   }, [previewRef, previewImageData]);
 

@@ -37,12 +37,12 @@ function DummyYomichanSentenceTerminator() {
 }
 
 function ImagePreprocessor({
-  preprocessorSettingsRef,
+  preprocessorSettings,
   setPreprocessorSettings,
   previewRef
 }: {
+  preprocessorSettings: PreprocessorSettings
   setPreprocessorSettings: (settings: PreprocessorSettings) => void,
-  preprocessorSettingsRef: React.MutableRefObject<PreprocessorSettings>,
   previewRef: React.RefObject<HTMLCanvasElement>
 }) {
   return <div className="space-y-4">
@@ -52,10 +52,10 @@ function ImagePreprocessor({
         <input
           type="checkbox"
           className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettingsRef.current.isBinarize}
+          checked={preprocessorSettings.isBinarize}
           onChange={(e) => {
             setPreprocessorSettings({
-              ...preprocessorSettingsRef.current,
+              ...preprocessorSettings,
               isBinarize: e.target.checked,
             });
           }}
@@ -68,10 +68,10 @@ function ImagePreprocessor({
           min={0}
           max={100}
           className="form-range w-full"
-          value={preprocessorSettingsRef.current.binarize}
+          value={preprocessorSettings.binarize}
           onChange={(e) => {
             setPreprocessorSettings({
-              ...preprocessorSettingsRef.current,
+              ...preprocessorSettings,
               binarize: e.target.valueAsNumber,
             });
           }}
@@ -84,10 +84,10 @@ function ImagePreprocessor({
           min={0}
           max={100}
           className="form-range w-full"
-          value={preprocessorSettingsRef.current.blurRadius}
+          value={preprocessorSettings.blurRadius}
           onChange={(e) => {
             setPreprocessorSettings({
-              ...preprocessorSettingsRef.current,
+              ...preprocessorSettings,
               blurRadius: e.target.valueAsNumber,
             });
           }}
@@ -98,10 +98,10 @@ function ImagePreprocessor({
         <input
           type="checkbox"
           className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettingsRef.current.dilate}
+          checked={preprocessorSettings.dilate}
           onChange={(e) => {
             setPreprocessorSettings({
-              ...preprocessorSettingsRef.current,
+              ...preprocessorSettings,
               dilate: e.target.checked,
             });
           }}
@@ -112,10 +112,10 @@ function ImagePreprocessor({
         <input
           type="checkbox"
           className="form-checkbox h-5 w-5 text-blue-600"
-          checked={preprocessorSettingsRef.current.invert}
+          checked={preprocessorSettings.invert}
           onChange={(e) => {
             setPreprocessorSettings({
-              ...preprocessorSettingsRef.current,
+              ...preprocessorSettings,
               invert: e.target.checked,
             });
           }}
@@ -185,6 +185,16 @@ function getScaledCoordinated(e: React.MouseEvent<HTMLCanvasElement>): { offsetX
 }
 
 export default function VideoCapture() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const ocrResultRef = useRef<HTMLDivElement>(null);
+  const startPosRef = useRef({ x: 0, y: 0 });
+  const endPosRef = useRef({ x: 0, y: 0 });
+  const isCaptureLoopEnabledRef = useRef<boolean>(false);
+  const imagesRef = useRef<CanvasCaptureImage[]>([]);
+  const isDrawingRef = useRef<boolean>(false);
+  const captureLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const preprocessorSettingsRef = useRef<PreprocessorSettings>({
     isBinarize: false,
     binarize: 50,
@@ -193,19 +203,9 @@ export default function VideoCapture() {
     dilate: false,
   });
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  const ocrResultRef = useRef<HTMLDivElement>(null);
-  const startPosRef = useRef({ x: 0, y: 0 });
-  const endPosRef = useRef({ x: 0, y: 0 });
-  const isCaptureLoopEnabledRef = useRef(false);
-  const imagesRef = useRef<CanvasCaptureImage[]>([]);
-  const isDrawingRef = useRef(false);
-  const captureLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const [previewImageData, setPreviewImageData] = useState<CanvasCapture | null>(null);
-  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState(false);
+  const [isCaptureLoopEnabled, setIsCaptureLoopEnabled] = useState<boolean>(isCaptureLoopEnabledRef.current);
+  const [preprocessorSettings, setPreprocessorSettings] = useState<PreprocessorSettings>(preprocessorSettingsRef.current);
 
   useEffect(() => {
     isCaptureLoopEnabledRef.current = isCaptureLoopEnabled;
@@ -215,14 +215,19 @@ export default function VideoCapture() {
     if (isCaptureLoopEnabled) {
       captureLoopIntervalRef.current = startCaptureSelectionLoop();
     }
-  }, [isCaptureLoopEnabled])
+  }, [isCaptureLoopEnabled]);
 
-  const getSelectedImageData = async (): Promise<CanvasCapture | undefined> => {
-    if (!canvasRef.current || !videoRef.current) { return; }
+  useEffect(() => {
+    preprocessorSettingsRef.current = preprocessorSettings;
+    getSelectedImageData().then((imageData) => setPreviewImageData(imageData)).catch(console.error);
+  }, [preprocessorSettings]);
+
+  const getSelectedImageData = async (): Promise<CanvasCapture | null> => {
+    if (!canvasRef.current || !videoRef.current) { return null; }
 
     const captureCanvas = document.createElement('canvas');
     const captureContext = captureCanvas.getContext('2d');
-    if (!captureContext) { return; }
+    if (!captureContext) { return null; }
 
     const canvasVideoScaleFactor = canvasRef.current.width / videoRef.current.videoWidth;
     const width = Math.floor(((endPosRef.current.x - startPosRef.current.x) / canvasVideoScaleFactor) * window.devicePixelRatio);
@@ -249,13 +254,13 @@ export default function VideoCapture() {
 
     if (captureCanvas.width === 0 || captureCanvas.height === 0) {
       console.log('No image data captured');
-      return;
+      return null;
     }
 
     captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettingsRef.current), 0, 0);
     const imageBlob: Blob | null = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
     if (!imageBlob) {
-      return;
+      return null;
     }
 
     return {
@@ -435,11 +440,8 @@ export default function VideoCapture() {
       <DummyYomichanSentenceTerminator />
     </div>
     <ImagePreprocessor
-      preprocessorSettingsRef={preprocessorSettingsRef}
-      setPreprocessorSettings={(v) => {
-        preprocessorSettingsRef.current = v;
-        setPreviewImageData(null);
-      }}
+      preprocessorSettings={preprocessorSettings}
+      setPreprocessorSettings={setPreprocessorSettings}
       previewRef={previewRef}
     />
   </>

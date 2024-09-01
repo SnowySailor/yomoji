@@ -18,6 +18,7 @@ type OcrData = {
 type EqualityResult = {
   equal: boolean;
   percentageDifferences: number[];
+  wereAllComparisonsFailures: boolean;
 };
 
 export const doOcr = async (data: OcrData) => {
@@ -89,5 +90,6 @@ export const compareImages = async (
   return {
     equal: allEqual,
     percentageDifferences,
+    wereAllComparisonsFailures: percentageDifferences.every((diff) => diff === -1),
   };
 };

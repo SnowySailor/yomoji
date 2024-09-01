@@ -385,7 +385,7 @@ export default function VideoCapture() {
     const { capture } = imageData;
 
     const newImages = [capture, ...images.slice(0, 2)];
-    if (isSeekingStaticImageMode) {
+    if (isSeekingStaticImageMode && images.length > 1) {
       console.log('Seeking static image mode...');
       const { equal, percentageDifferences } = await compareImages(newImages, imageDiffThreshold);
       console.log('Image comparison result:', equal, percentageDifferences);
@@ -394,18 +394,18 @@ export default function VideoCapture() {
         setIsSeekingStaticImageMode(false);
         await processImage(capture);
       }
-    } else {
+    } else if (!isSeekingStaticImageMode) {
       if (images.length === 0) {
         setImages([capture]);
         return;
       }
 
-      const { equal, percentageDifferences } = await compareImages(
+      const { equal, percentageDifferences, wereAllComparisonsFailures } = await compareImages(
         [capture, images[0]],
         imageDiffThreshold,
       );
       console.log('Image comparison result:', equal, percentageDifferences);
-      if (!equal) {
+      if (!equal && !wereAllComparisonsFailures) {
         console.log('Detected change in image...');
         setIsSeekingStaticImageMode(true);
       }

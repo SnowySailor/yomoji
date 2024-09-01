@@ -4,21 +4,21 @@ import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { Buffer } from 'buffer';
 import { writeFileSync } from 'fs';
 import pixelmatch from 'pixelmatch';
-import type { CanvasCaptureImage } from './page';
 import { PNG } from 'pngjs';
+import type { CanvasCaptureImage } from './page';
 
 const client = new ImageAnnotatorClient({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
 });
 
-interface OcrData {
+type OcrData = {
   image: string;
-}
+};
 
 type EqualityResult = {
   equal: boolean;
   percentageDifferences: number[];
-}
+};
 
 export const doOcr = async (data: OcrData) => {
   try {
@@ -37,16 +37,20 @@ export const doOcr = async (data: OcrData) => {
     console.error('Error during OCR:', error);
     return false;
   }
-}
+};
 
-export const compareImages = async (images: CanvasCaptureImage[], percentageThreshold: number): Promise<EqualityResult> => {
+export const compareImages = async (
+  images: CanvasCaptureImage[],
+  percentageThreshold: number,
+): Promise<EqualityResult> => {
   const equalityChecks = await Promise.all(images.map(async (image, index) => {
     if (index === 0) {
       return {
         equal: true,
         percentageDifferent: -1,
-      }
-    };
+      };
+    }
+
     const { imageBase64 } = image;
     const { imageBase64: imageBase64Prev } = images[index - 1];
     const image1 = PNG.sync.read(Buffer.from(imageBase64, 'base64'));
@@ -59,9 +63,16 @@ export const compareImages = async (images: CanvasCaptureImage[], percentageThre
         percentageDifferent: -1,
       };
     }
-    const diff = new PNG({width, height});
+    const diff = new PNG({ width, height });
 
-    const diffPixels = pixelmatch(image1.data, image2.data, diff.data, width, height, { threshold: 0.1 });
+    const diffPixels = pixelmatch(
+      image1.data,
+      image2.data,
+      diff.data,
+      width,
+      height,
+      { threshold: 0.1 },
+    );
     const percentageDifferent = diffPixels / (width * height);
     const equal = percentageDifferent < percentageThreshold;
     return {
@@ -70,11 +81,11 @@ export const compareImages = async (images: CanvasCaptureImage[], percentageThre
     };
   }));
 
-  const percentageDifferences = equalityChecks.map(result => result.percentageDifferent);
-  const allEqual = equalityChecks.every(result => result.equal);
+  const percentageDifferences = equalityChecks.map((result) => result.percentageDifferent);
+  const allEqual = equalityChecks.every((result) => result.equal);
 
   return {
     equal: allEqual,
-    percentageDifferences
+    percentageDifferences,
   };
-}
+};

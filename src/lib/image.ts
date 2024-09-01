@@ -1,9 +1,9 @@
-import type { PreprocessorSettings } from "@/app/page";
+import type { PreprocessorSettings } from '@/app/page';
 
 export function preprocessImage(canvas: HTMLCanvasElement, settings: PreprocessorSettings) {
-  const processedImageData = canvas?.getContext('2d')?.getImageData(0,0,canvas.width, canvas.height) || new ImageData(canvas.width, canvas.height);
+  const processedImageData = canvas?.getContext('2d')?.getImageData(0, 0, canvas.width, canvas.height) || new ImageData(canvas.width, canvas.height);
   if (settings.blurRadius > 0) {
-    blurARGB(processedImageData.data, canvas, settings.blurRadius/100);
+    blurARGB(processedImageData.data, canvas, settings.blurRadius / 100);
   }
   if (settings.dilate) {
     dilate(processedImageData.data, canvas);
@@ -12,7 +12,7 @@ export function preprocessImage(canvas: HTMLCanvasElement, settings: Preprocesso
     invertColors(processedImageData.data);
   }
   if (settings.isBinarize) {
-    thresholdFilter(processedImageData.data, settings.binarize/100);
+    thresholdFilter(processedImageData.data, settings.binarize / 100);
   }
   return processedImageData;
 }
@@ -39,10 +39,10 @@ function thresholdFilter(pixels: Uint8ClampedArray, level: number | undefined) {
 }
 // from https://css-tricks.com/manipulating-pixels-using-canvas/
 function invertColors(pixels: Uint8ClampedArray) {
-  for (var i = 0; i < pixels.length; i+= 4) {
+  for (let i = 0; i < pixels.length; i += 4) {
     pixels[i] = pixels[i] ^ 255; // Invert Red
-    pixels[i+1] = pixels[i+1] ^ 255; // Invert Green
-    pixels[i+2] = pixels[i+2] ^ 255; // Invert Blue
+    pixels[i + 1] = pixels[i + 1] ^ 255; // Invert Green
+    pixels[i + 2] = pixels[i + 2] ^ 255; // Invert Blue
   }
 }
 
@@ -52,7 +52,7 @@ let blurKernelSize: number | undefined;
 let blurKernel: Int32Array | number[];
 let blurMult: any[];
 
-  // from https://github.com/processing/p5.js/blob/main/src/image/filters.js
+// from https://github.com/processing/p5.js/blob/main/src/image/filters.js
 function buildBlurKernel(r: number) {
   let radius = (r * 3.5) | 0;
   radius = radius < 1 ? 1 : radius < 248 ? radius : 248;
@@ -66,8 +66,10 @@ function buildBlurKernel(r: number) {
       blurMult[l] = new Int32Array(256);
     }
 
-    let bk, bki;
-    let bm, bmi;
+    let bk; let
+      bki;
+    let bm; let
+      bmi;
 
     for (let i = 1, radiusi = radius - 1; i < radius; i++) {
       blurKernel[radius + i] = blurKernel[radiusi] = bki = radiusi * radiusi;
@@ -88,22 +90,25 @@ function buildBlurKernel(r: number) {
 
 // from https://github.com/processing/p5.js/blob/main/src/image/filters.js
 function blurARGB(pixels: Uint8ClampedArray, canvas: { width: any; height: any; }, radius: number) {
-  const width = canvas.width;
-  const height = canvas.height;
+  const { width } = canvas;
+  const { height } = canvas;
   const numPackedPixels = width * height;
   const argb = new Int32Array(numPackedPixels);
   for (let j = 0; j < numPackedPixels; j++) {
     argb[j] = getARGB(pixels, j);
   }
-  let sum, cr, cg, cb, ca;
-  let read, ri, ym, ymi, bk0;
+  let sum; let cr; let cg; let cb; let
+    ca;
+  let read; let ri; let ym; let ymi; let
+    bk0;
   const a2 = new Int32Array(numPackedPixels);
   const r2 = new Int32Array(numPackedPixels);
   const g2 = new Int32Array(numPackedPixels);
   const b2 = new Int32Array(numPackedPixels);
   let yi = 0;
   buildBlurKernel(radius);
-  let x, y, i;
+  let x; let y; let
+    i;
   let bm;
   for (y = 0; y < height; y++) {
     for (x = 0; x < width; x++) {
@@ -169,11 +174,10 @@ function blurARGB(pixels: Uint8ClampedArray, canvas: { width: any; height: any; 
         ri++;
         read += width;
       }
-      argb[x + yi] =
-        ((ca / sum) << 24) |
-        ((cr / sum) << 16) |
-        ((cg / sum) << 8) |
-        (cb / sum);
+      argb[x + yi] = ((ca / sum) << 24)
+        | ((cr / sum) << 16)
+        | ((cg / sum) << 8)
+        | (cb / sum);
     }
     yi += width;
     ymi += width;
@@ -182,17 +186,17 @@ function blurARGB(pixels: Uint8ClampedArray, canvas: { width: any; height: any; 
   setPixels(pixels, argb);
 }
 
-function getARGB (data: Uint8ClampedArray | number[], i: number) {
+function getARGB(data: Uint8ClampedArray | number[], i: number) {
   const offset = i * 4;
   return (
-    ((data[offset + 3] << 24) & 0xff000000) |
-    ((data[offset] << 16) & 0x00ff0000) |
-    ((data[offset + 1] << 8) & 0x0000ff00) |
-    (data[offset + 2] & 0x000000ff)
+    ((data[offset + 3] << 24) & 0xff000000)
+    | ((data[offset] << 16) & 0x00ff0000)
+    | ((data[offset + 1] << 8) & 0x0000ff00)
+    | (data[offset + 2] & 0x000000ff)
   );
-};
+}
 
-function setPixels (pixels: Uint8ClampedArray, data: Int32Array | number[]) {
+function setPixels(pixels: Uint8ClampedArray, data: Int32Array | number[]) {
   let offset = 0;
   for (let i = 0, al = pixels.length; i < al; i++) {
     offset = i * 4;
@@ -201,18 +205,22 @@ function setPixels (pixels: Uint8ClampedArray, data: Int32Array | number[]) {
     pixels[offset + 2] = data[i] & 0x000000ff;
     pixels[offset + 3] = (data[i] & 0xff000000) >>> 24;
   }
-};
+}
 
-  // from https://github.com/processing/p5.js/blob/main/src/image/filters.js
- function dilate(pixels: Uint8ClampedArray, canvas: { width: number; }) {
+// from https://github.com/processing/p5.js/blob/main/src/image/filters.js
+function dilate(pixels: Uint8ClampedArray, canvas: { width: number; }) {
   let currIdx = 0;
   const maxIdx = pixels.length ? pixels.length / 4 : 0;
   const out = new Int32Array(maxIdx);
-  let currRowIdx, maxRowIdx, colOrig, colOut, currLum;
+  let currRowIdx; let maxRowIdx; let colOrig; let colOut; let
+    currLum;
 
-  let idxRight, idxLeft, idxUp, idxDown;
-  let colRight, colLeft, colUp, colDown;
-  let lumRight, lumLeft, lumUp, lumDown;
+  let idxRight; let idxLeft; let idxUp; let
+    idxDown;
+  let colRight; let colLeft; let colUp; let
+    colDown;
+  let lumRight; let lumLeft; let lumUp; let
+    lumDown;
 
   while (currIdx < maxIdx) {
     currRowIdx = currIdx;
@@ -241,27 +249,22 @@ function setPixels (pixels: Uint8ClampedArray, data: Int32Array | number[]) {
       colDown = getARGB(pixels, idxDown);
       colRight = getARGB(pixels, idxRight);
 
-      //compute luminance
-      currLum =
-        77 * ((colOrig >> 16) & 0xff) +
-        151 * ((colOrig >> 8) & 0xff) +
-        28 * (colOrig & 0xff);
-      lumLeft =
-        77 * ((colLeft >> 16) & 0xff) +
-        151 * ((colLeft >> 8) & 0xff) +
-        28 * (colLeft & 0xff);
-      lumRight =
-        77 * ((colRight >> 16) & 0xff) +
-        151 * ((colRight >> 8) & 0xff) +
-        28 * (colRight & 0xff);
-      lumUp =
-        77 * ((colUp >> 16) & 0xff) +
-        151 * ((colUp >> 8) & 0xff) +
-        28 * (colUp & 0xff);
-      lumDown =
-        77 * ((colDown >> 16) & 0xff) +
-        151 * ((colDown >> 8) & 0xff) +
-        28 * (colDown & 0xff);
+      // compute luminance
+      currLum = 77 * ((colOrig >> 16) & 0xff)
+        + 151 * ((colOrig >> 8) & 0xff)
+        + 28 * (colOrig & 0xff);
+      lumLeft = 77 * ((colLeft >> 16) & 0xff)
+        + 151 * ((colLeft >> 8) & 0xff)
+        + 28 * (colLeft & 0xff);
+      lumRight = 77 * ((colRight >> 16) & 0xff)
+        + 151 * ((colRight >> 8) & 0xff)
+        + 28 * (colRight & 0xff);
+      lumUp = 77 * ((colUp >> 16) & 0xff)
+        + 151 * ((colUp >> 8) & 0xff)
+        + 28 * (colUp & 0xff);
+      lumDown = 77 * ((colDown >> 16) & 0xff)
+        + 151 * ((colDown >> 8) & 0xff)
+        + 28 * (colDown & 0xff);
 
       if (lumLeft > currLum) {
         colOut = colLeft;
@@ -283,4 +286,4 @@ function setPixels (pixels: Uint8ClampedArray, data: Int32Array | number[]) {
     }
   }
   setPixels(pixels, out);
-};
+}

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { doOcr, compareImages } from './functions';
 import { preprocessImage } from '@/lib/image';
-import { useInterval } from 'usehooks-ts'
+import { useInterval } from 'usehooks-ts';
 import clsx from 'clsx';
+import { doOcr, compareImages } from './functions';
 
-export interface PreprocessorSettings {
+export type PreprocessorSettings = {
   isBinarize: boolean;
   binarize: number;
   blurRadius: number;
@@ -41,13 +41,13 @@ function DummyYomichanSentenceTerminator() {
 function ImagePreprocessor({
   preprocessorSettings,
   setPreprocessorSettings,
-  previewRef
+  previewRef,
 }: {
   preprocessorSettings: PreprocessorSettings
   setPreprocessorSettings: (settings: PreprocessorSettings) => void,
   previewRef: React.RefObject<HTMLCanvasElement>
 }) {
-  return (<>
+  return (
     <div className="flex space-x-4">
       <div className="w-1/3">
         <div className="grid grid-cols-2 gap-4 items-center w-full">
@@ -128,7 +128,6 @@ function ImagePreprocessor({
         />
       </div>
     </div>
-    </>
   );
 }
 
@@ -147,36 +146,41 @@ function ScreenCaptureButtons({
   selectScreen: () => void,
   processImage: () => void
 }) {
-  return <div className="flex space-x-4">
-    <button
-      onClick={() => { processImage() }}
-      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      Force process image
-    </button>
-    <button
-      onClick={selectScreen}
-      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      Select screen
-    </button>
-    <button
-      onClick={() => { setIsCaptureLoopEnabled(!isCaptureLoopEnabled) }}
-      className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-    >
-      {isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop
-    </button>
-    <span className="pl-4 py-2">Image change sensitivity</span>
-    <input
-      type="number"
-      step={0.001}
-      min={0}
-      max={1}
-      value={imageDiffThreshold}
-      className="w-20 text-black text-center rounded"
-      onChange={(e) => setImageDiffThreshold(e.target.valueAsNumber)}
-    />
-  </div>
+  return (
+    <div className="flex space-x-4">
+      <button
+        type="button"
+        onClick={() => { processImage(); }}
+        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Force process image
+      </button>
+      <button
+        type="button"
+        onClick={selectScreen}
+        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Select screen
+      </button>
+      <button
+        type="button"
+        onClick={() => { setIsCaptureLoopEnabled(!isCaptureLoopEnabled); }}
+        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+      >
+        {isCaptureLoopEnabled ? 'Stop' : 'Start'} capture loop
+      </button>
+      <span className="pl-4 py-2">Image change sensitivity</span>
+      <input
+        type="number"
+        step={0.001}
+        min={0}
+        max={1}
+        value={imageDiffThreshold}
+        className="w-20 text-black text-center rounded"
+        onChange={(e) => setImageDiffThreshold(e.target.valueAsNumber)}
+      />
+    </div>
+  );
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -185,12 +189,14 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onloadend = () => {
       const result = reader.result as string;
       resolve(result.split(',')[1]);
-    }
+    };
     reader.readAsDataURL(blob);
   });
 }
 
-function getScaledCoordinated(e: React.MouseEvent<HTMLCanvasElement>): { offsetX: number, offsetY: number } {
+function getScaledCoordinated(
+  e: React.MouseEvent<HTMLCanvasElement>,
+): { offsetX: number, offsetY: number } {
   const { offsetX, offsetY } = e.nativeEvent;
   return {
     offsetX: offsetX / window.devicePixelRatio,
@@ -222,10 +228,6 @@ export default function VideoCapture() {
   const [previewImageData, setPreviewImageData] = useState<CanvasCapture | null>(null);
   const [imageDiffThreshold, setImageDiffThreshold] = useState(0.02);
 
-  useEffect(() => {
-    getSelectedImageData().then((imageData) => setPreviewImageData(imageData)).catch(console.error);
-  }, [preprocessorSettings]);
-
   const triggerOcrResultsFlash = () => {
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 500);
@@ -239,8 +241,12 @@ export default function VideoCapture() {
     if (!captureContext) { return null; }
 
     const canvasVideoScaleFactor = canvasRef.current.width / videoRef.current.videoWidth;
-    const width = Math.floor(((endPos.x - startPos.x) / canvasVideoScaleFactor) * window.devicePixelRatio);
-    const height = Math.floor(((endPos.y - startPos.y) / canvasVideoScaleFactor) * window.devicePixelRatio);
+    const width = Math.floor(
+      ((endPos.x - startPos.x) / canvasVideoScaleFactor) * window.devicePixelRatio,
+    );
+    const height = Math.floor(
+      ((endPos.y - startPos.y) / canvasVideoScaleFactor) * window.devicePixelRatio,
+    );
     captureCanvas.width = width;
     captureCanvas.height = height;
 
@@ -258,7 +264,7 @@ export default function VideoCapture() {
       0,
       0,
       width,
-      height
+      height,
     );
 
     if (captureCanvas.width === 0 || captureCanvas.height === 0) {
@@ -267,7 +273,7 @@ export default function VideoCapture() {
     }
 
     captureContext.putImageData(preprocessImage(captureCanvas, preprocessorSettings), 0, 0);
-    const imageBlob: Blob | null = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
+    const imageBlob: Blob | null = await new Promise((resolve) => { captureCanvas.toBlob(resolve, 'image/png'); });
     if (!imageBlob) {
       return null;
     }
@@ -292,10 +298,10 @@ export default function VideoCapture() {
     if (!canvasRef.current || !videoRef.current) { return; }
     const { width } = canvasRef.current.getBoundingClientRect();
     const { videoWidth, videoHeight } = videoRef.current;
-  
+
     const videoAspectRatio = videoWidth / videoHeight;
     const canvasHeight = width / videoAspectRatio;
-  
+
     const { devicePixelRatio: ratio = 1 } = window;
     const context = canvasRef.current.getContext('2d');
     canvasRef.current.width = width;
@@ -333,7 +339,7 @@ export default function VideoCapture() {
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { offsetX , offsetY } = getScaledCoordinated(e);
+    const { offsetX, offsetY } = getScaledCoordinated(e);
     setStartPos({ x: offsetX, y: offsetY });
     setIsDrawing(true);
   };
@@ -341,7 +347,7 @@ export default function VideoCapture() {
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) { return; }
 
-    const { offsetX , offsetY } = getScaledCoordinated(e);
+    const { offsetX, offsetY } = getScaledCoordinated(e);
     setEndPos({ x: offsetX, y: offsetY });
 
     const context = canvasRef.current?.getContext('2d', { willReadFrequently: true });
@@ -393,7 +399,10 @@ export default function VideoCapture() {
         return;
       }
 
-      const { equal, percentageDifferences } = await compareImages([capture, images[0]], imageDiffThreshold);
+      const { equal, percentageDifferences } = await compareImages(
+        [capture, images[0]],
+        imageDiffThreshold,
+      );
       console.log('Image comparison result:', equal, percentageDifferences);
       if (equal) { return; }
       console.log('Detected change in image...');
@@ -402,48 +411,55 @@ export default function VideoCapture() {
     setImages(newImages);
   }, 1000);
 
-  return <>
-    <div>
-      <div className="relative w-full h-auto">
-        <video ref={videoRef} autoPlay className="w-full h-auto" onResize={resizeCanvas}/>
-        <canvas
-          ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={endDrawing}
-          className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+  useEffect(() => {
+    getSelectedImageData().then((imageData) => setPreviewImageData(imageData)).catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preprocessorSettings]);
+
+  return (
+    <>
+      <div>
+        <div className="relative w-full h-auto">
+          <video ref={videoRef} autoPlay className="w-full h-auto" onResize={resizeCanvas} />
+          <canvas
+            ref={canvasRef}
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={endDrawing}
+            className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+          />
+        </div>
+        <br />
+        <ScreenCaptureButtons
+          isCaptureLoopEnabled={isCaptureLoopEnabled}
+          setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
+          imageDiffThreshold={imageDiffThreshold}
+          setImageDiffThreshold={setImageDiffThreshold}
+          selectScreen={selectScreen}
+          processImage={async () => {
+            const imageData = await getSelectedImageData();
+            if (!imageData) { return; }
+            await processImage(imageData.capture);
+          }}
         />
+        <DummyYomichanSentenceTerminator />
+        <div
+          ref={ocrResultRef}
+          contentEditable
+          suppressContentEditableWarning
+          className={clsx(
+            isFlashing ? 'flash-border' : '',
+            'border-solid border-transparent border-[3px]',
+            'w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 shadow-none resize-none outline-none overflow-scroll',
+          )}
+        />
+        <DummyYomichanSentenceTerminator />
       </div>
-      <br/>
-      <ScreenCaptureButtons
-        isCaptureLoopEnabled={isCaptureLoopEnabled}
-        setIsCaptureLoopEnabled={setIsCaptureLoopEnabled}
-        imageDiffThreshold={imageDiffThreshold}
-        setImageDiffThreshold={setImageDiffThreshold}
-        selectScreen={selectScreen}
-        processImage={async () => {
-          const imageData = await getSelectedImageData();
-          if (!imageData) { return; }
-          await processImage(imageData.capture);
-        }}
+      <ImagePreprocessor
+        preprocessorSettings={preprocessorSettings}
+        setPreprocessorSettings={setPreprocessorSettings}
+        previewRef={previewRef}
       />
-      <DummyYomichanSentenceTerminator />
-      <div
-        ref={ocrResultRef}
-        contentEditable={true}
-        suppressContentEditableWarning={true}
-        className={clsx(
-          isFlashing ? "flash-border" : "",
-          "border-solid border-transparent border-[3px]",
-          "w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 shadow-none resize-none outline-none overflow-scroll"
-        )}
-      />
-      <DummyYomichanSentenceTerminator />
-    </div>
-    <ImagePreprocessor
-      preprocessorSettings={preprocessorSettings}
-      setPreprocessorSettings={setPreprocessorSettings}
-      previewRef={previewRef}
-    />
-  </>
-};
+    </>
+  );
+}

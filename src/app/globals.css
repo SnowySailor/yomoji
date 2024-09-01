@@ -38,13 +38,15 @@ input[type="number"]::-webkit-inner-spin-button {
 
 @keyframes flashGreenBorder {
   0% {
-    border: 3px solid green;
+    border: 2px solid green;
+    background-color: rgba(0, 128, 0, 0.3);
   }
   100% {
-    border: 3px solid transparent;
+    border: 2px solid transparent;
+    background-color: rgb(--tw-bg-grey-900);
   }
 }
 
 .flash-border {
-  animation: flashGreenBorder 0.5s ease-in-out forwards;
+  animation: flashGreenBorder 1s ease-out forwards;
 }

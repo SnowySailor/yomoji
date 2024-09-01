@@ -230,7 +230,7 @@ export default function VideoCapture() {
 
   const triggerOcrResultsFlash = () => {
     setIsFlashing(true);
-    setTimeout(() => setIsFlashing(false), 500);
+    setTimeout(() => setIsFlashing(false), 1000);
   };
 
   const getSelectedImageData = async (): Promise<CanvasCapture | null> => {
@@ -361,6 +361,7 @@ export default function VideoCapture() {
 
   const endDrawing = async () => {
     setIsDrawing(false);
+    setImages([]);
     savePreviewImage().catch(console.error);
     const imageData = await getSelectedImageData();
     if (!imageData) { return; }
@@ -404,9 +405,10 @@ export default function VideoCapture() {
         imageDiffThreshold,
       );
       console.log('Image comparison result:', equal, percentageDifferences);
-      if (equal) { return; }
-      console.log('Detected change in image...');
-      setIsSeekingStaticImageMode(true);
+      if (!equal) {
+        console.log('Detected change in image...');
+        setIsSeekingStaticImageMode(true);
+      }
     }
     setImages(newImages);
   }, 1000);
@@ -449,7 +451,7 @@ export default function VideoCapture() {
           suppressContentEditableWarning
           className={clsx(
             isFlashing ? 'flash-border' : '',
-            'border-solid border-transparent border-[3px]',
+            'border-solid border-transparent border-2',
             'w-full h-64 text-3xl mt-4 p-2 text-white bg-gray-900 shadow-none resize-none outline-none overflow-scroll',
           )}
         />

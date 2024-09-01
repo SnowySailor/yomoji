@@ -25,7 +25,9 @@ export const doOcr = async (data: OcrData) => {
     console.log('Spending money on OCR...');
     const buffer = Buffer.from(data.image, 'base64');
     const fileBuffer = Buffer.from(data.image, 'base64');
-    writeFileSync(`/app/debug/${Date.now()}.png`, fileBuffer);
+    if (process.env.NODE_ENV === 'development') {
+      writeFileSync(`/app/debug/${Date.now()}.png`, fileBuffer);
+    }
 
     const [result] = await client.annotateImage({
       image: { content: buffer },

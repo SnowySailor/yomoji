@@ -7,12 +7,18 @@ ENV PORT 3000
 
 COPY package.json package-lock.json ./
 
-RUN npm install --frozen-lockfile
+RUN npm install --frozen-lockfile \
+    && chown -R 1000:1000 /app
 
 COPY . .
 
-FROM base as dev
-
 USER 1000
+
+FROM base as prod
+
+RUN npm run build
+CMD ["npm", "run", "start"]
+
+FROM base as dev
 
 CMD ["npm", "run", "dev"]

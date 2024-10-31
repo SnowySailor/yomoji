@@ -6,7 +6,7 @@ You will need Docker and a Google Service Account key with Cloud Vision API acce
 ## Running
 1. Clone this repository
 1. Copy your Google JSON key into `./config/google_service_account.json`
-1. Run `docker compose up`
+1. Run `docker compose -f docker-compose.dev.yml up`
 1. Open `http://localhost:3001` and click the "Select screen" button (you may have to scroll down)
 1. Select a screen and you will be able to draw a rectangle around whatever you want to run OCR on
 

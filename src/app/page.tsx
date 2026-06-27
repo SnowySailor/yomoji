@@ -124,7 +124,7 @@ function ImagePreprocessor({
       <div className="flex justify-center w-2/3">
         <canvas
           ref={previewRef}
-          className="border border-gray-300 max-w-full"
+          className="border border-gray-300 max-w-full h-auto self-start"
         />
       </div>
     </div>
@@ -211,6 +211,8 @@ export default function VideoCapture() {
 
   const ocrResultRef = useRef<HTMLDivElement>(null);
   const [isFlashing, setIsFlashing] = useState(false);
+  const [pageTitle, setPageTitle] = useState('');
+  const [isTitleFlashing, setIsTitleFlashing] = useState(false);
 
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [endPos, setEndPos] = useState({ x: 0, y: 0 });
@@ -231,6 +233,18 @@ export default function VideoCapture() {
   const triggerOcrResultsFlash = () => {
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 1000);
+  };
+
+  useEffect(() => {
+    setPageTitle(document.title);
+  }, []);
+
+  const saveTitle = () => {
+    document.title = pageTitle;
+    setIsTitleFlashing(false);
+    // Restart the animation on the next frame so repeated saves re-trigger it.
+    requestAnimationFrame(() => setIsTitleFlashing(true));
+    setTimeout(() => setIsTitleFlashing(false), 1000);
   };
 
   const getSelectedImageData = async (): Promise<CanvasCapture | null> => {
@@ -443,6 +457,23 @@ export default function VideoCapture() {
             if (!imageData) { return; }
             await processImage(imageData.capture);
           }}
+        />
+        <input
+          type="text"
+          value={pageTitle}
+          onChange={(e) => setPageTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              saveTitle();
+            }
+          }}
+          placeholder="Page title"
+          className={clsx(
+            isTitleFlashing ? 'flash-border' : '',
+            'border-solid border-transparent border-2',
+            'w-full mt-4 p-2 text-white bg-gray-900 rounded outline-none',
+          )}
         />
         <DummyYomichanSentenceTerminator />
         <div
